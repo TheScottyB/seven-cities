@@ -1,0 +1,48 @@
+import { TILE_PX } from './tileset'
+
+/** The conquistador: a little figure with a helmet and cape. */
+export function drawExplorer(g: CanvasRenderingContext2D, cx: number, cy: number): void {
+  const s = TILE_PX
+  // cape
+  g.fillStyle = '#b1372f'
+  g.fillRect(cx - s * 0.28, cy - s * 0.15, s * 0.56, s * 0.5)
+  // body
+  g.fillStyle = '#c9c9d2'
+  g.fillRect(cx - s * 0.2, cy - s * 0.1, s * 0.4, s * 0.42)
+  // head
+  g.fillStyle = '#e3c1a0'
+  g.beginPath()
+  g.arc(cx, cy - s * 0.24, s * 0.18, 0, Math.PI * 2)
+  g.fill()
+  // helmet
+  g.fillStyle = '#8a8a94'
+  g.fillRect(cx - s * 0.2, cy - s * 0.42, s * 0.4, s * 0.14)
+}
+
+/** A village: cluster of huts, gold-roofed if it's one of the fabled cities. */
+export function drawVillage(
+  g: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  golden: boolean,
+  discovered: boolean,
+): void {
+  const s = TILE_PX
+  const roof = golden ? '#f4c430' : '#7a4a24'
+  g.fillStyle = '#5a3a1e'
+  g.fillRect(cx - s * 0.35, cy - s * 0.05, s * 0.7, s * 0.4)
+  g.fillStyle = roof
+  // three little roof triangles
+  for (const ox of [-0.28, 0, 0.28]) {
+    g.beginPath()
+    g.moveTo(cx + ox * s - s * 0.16, cy)
+    g.lineTo(cx + ox * s, cy - s * 0.28)
+    g.lineTo(cx + ox * s + s * 0.16, cy)
+    g.fill()
+  }
+  if (golden && discovered) {
+    g.strokeStyle = '#fff2b0'
+    g.lineWidth = 1
+    g.strokeRect(cx - s * 0.42, cy - s * 0.36, s * 0.84, s * 0.78)
+  }
+}
