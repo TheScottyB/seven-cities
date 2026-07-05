@@ -13,8 +13,8 @@ import { drawHud } from './ui/hud'
 import { drawStartScreen, drawEncounter, drawGameOver, drawResult } from './ui/panels'
 import { seedFromString } from './world/rng'
 
-const REVEAL_RADIUS = 5
-const VILLAGE_COUNT = 22
+const REVEAL_RADIUS = 7
+const VILLAGE_COUNT = 28
 const INTERACT_DIST = 1.4
 
 type Screen = 'start' | 'playing' | 'over'
@@ -168,6 +168,22 @@ function render() {
   if (screen === 'over') {
     const won = world.state.status === GameStatus.Won
     drawGameOver(ctx, canvas.width, canvas.height, won, score(world.state, world.fog.revealedCount))
+  }
+}
+
+// Dev-only inspection hook (stripped from production builds) for manual testing.
+if (import.meta.env.DEV) {
+  ;(window as unknown as { __dbg: unknown }).__dbg = {
+    world: () => world,
+    screen: () => screen,
+    teleportToVillage: (i = 0) => {
+      const v = world.villages.filter((x) => !x.depleted)[i]
+      if (v) {
+        world.explorer.x = v.x + 0.5
+        world.explorer.y = v.y + 0.5
+      }
+      return v
+    },
   }
 }
 

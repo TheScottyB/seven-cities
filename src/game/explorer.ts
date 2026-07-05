@@ -8,7 +8,7 @@ export interface Explorer {
 }
 
 export function makeExplorer(map: GameMap): Explorer {
-  return { x: map.landing.x + 0.5, y: map.landing.y + 0.5, baseSpeed: 6 }
+  return { x: map.landing.x + 0.5, y: map.landing.y + 0.5, baseSpeed: 8 }
 }
 
 function walkableAt(map: GameMap, x: number, y: number): boolean {

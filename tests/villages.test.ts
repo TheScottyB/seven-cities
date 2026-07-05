@@ -29,3 +29,12 @@ test('same seed → same villages', () => {
   const m = generateMap(123)
   expect(placeVillages(m, 20)).toEqual(placeVillages(m, 20))
 })
+
+test('the default map fits close to the requested village count', () => {
+  // guards against the map being too small/dense to place enough villages
+  // (28 is the count main.ts requests)
+  const m = generateMap(123)
+  const vs = placeVillages(m, 28)
+  expect(vs.length).toBeGreaterThanOrEqual(24)
+  expect(vs.filter((v) => v.golden).length).toBe(7)
+})

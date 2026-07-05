@@ -21,7 +21,7 @@ const SECONDS_PER_DAY = 20
 
 export function makeState(init: Partial<GameState> = {}): GameState {
   return {
-    food: 500,
+    food: 420,
     crew: 100,
     gold: 0,
     morale: 100,

@@ -51,6 +51,23 @@ test('golden city trade increments citiesFound', () => {
   expect(s.citiesFound).toBe(1)
 })
 
+test('a golden city counts once, even if gifted repeatedly', () => {
+  const s = makeState()
+  const v = village({ golden: true })
+  resolveGift(s, v)
+  resolveGift(s, v)
+  resolveGift(s, v)
+  expect(s.citiesFound).toBe(1)
+})
+
+test('gift then trade on the same golden city counts it once', () => {
+  const s = makeState()
+  const v = village({ golden: true })
+  resolveGift(s, v)
+  resolveTrade(s, v, () => 0.5)
+  expect(s.citiesFound).toBe(1)
+})
+
 test('depleted village cannot be re-traded', () => {
   const s = makeState()
   const v = village({ depleted: true })

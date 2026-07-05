@@ -6,11 +6,13 @@ type Roll = () => number
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
 function contact(s: GameState, v: Village): void {
-  if (!v.visited) {
+  const firstVisit = !v.visited
+  if (firstVisit) {
     v.visited = true
     s.villagesContacted++
+    // a City of Gold is "discovered" the first time you reach it, once
+    if (v.golden) s.citiesFound++
   }
-  if (v.golden && !v.depleted) s.citiesFound++
 }
 
 export function resolveTrade(s: GameState, v: Village, roll: Roll = Math.random): void {

@@ -9,7 +9,7 @@ export interface GameMap {
   seed: number
 }
 
-export function generateMap(seed: number, width = 256, height = 256): GameMap {
+export function generateMap(seed: number, width = 192, height = 192): GameMap {
   const elev = makeNoise2D(seed, 12)
   const moist = makeNoise2D(seed ^ 0x9e3779b9, 10)
   const tiles = new Uint8Array(width * height)
