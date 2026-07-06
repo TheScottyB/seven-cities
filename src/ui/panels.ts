@@ -92,7 +92,7 @@ export function drawStartScreen(
     'Manage your food, crew, and morale. Discover all seven',
     'fabled Cities of Gold before your expedition falls apart.',
     '',
-    'MOVE  W A S D / arrows      INTERACT  E / Space      CHOOSE  1 2 3',
+    'MOVE  W A S D / arrows    INTERACT  E / Space    CHOOSE  1 2 3    MENU  Esc',
     '',
     `Seed: ${seed}`,
     '',
@@ -114,7 +114,7 @@ export function drawEncounter(
   v: Village,
   goods: number,
 ): void {
-  const { x, y } = panel(ctx, viewW, viewH, 500, 268)
+  const { x, y } = panel(ctx, viewW, viewH, 580, 268)
   const cx = viewW / 2
   const title = v.golden ? 'A CITY OF GOLD!' : 'A native village'
   center(ctx, title, cx, y + 44, "bold 26px 'Courier New', monospace", v.golden ? '#f4c430' : '#e0d18a')
@@ -140,10 +140,10 @@ export function drawEncounter(
   for (const [k, label, disabled] of opts) {
     ctx.font = "bold 18px 'Courier New', monospace"
     ctx.fillStyle = disabled ? '#5a5a64' : '#f4c430'
-    ctx.fillText(`[${k}]`, x + 36, ly)
+    ctx.fillText(`[${k}]`, x + 32, ly)
     ctx.fillStyle = disabled ? '#5a5a64' : '#d7d7de'
     ctx.font = "15px 'Courier New', monospace"
-    ctx.fillText(label + (disabled ? '  — no goods!' : ''), x + 80, ly)
+    ctx.fillText(label + (disabled ? '  — no goods!' : ''), x + 76, ly)
     ly += 34
   }
   center(ctx, 'Esc — walk away', cx, y + 244, "14px 'Courier New', monospace", '#7a7a86')

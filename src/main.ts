@@ -214,6 +214,13 @@ function update(dt: number) {
       }
     }
 
+    if (input.pressed('esc')) {
+      // save and return to the title screen; Continue picks it right back up
+      saveGame()
+      screen = 'start'
+      flash = { text: '', t: 0 }
+    }
+
     autosaveIn -= sdt
     if (autosaveIn <= 0) {
       autosaveIn = AUTOSAVE_EVERY
@@ -290,10 +297,11 @@ function render() {
   if (prompt && !encounter && screen === 'playing') {
     ctx.font = "16px 'Courier New', monospace"
     ctx.fillStyle = 'rgba(0,0,0,0.6)'
-    ctx.fillRect(canvas.width / 2 - 150, canvas.height - 56, 300, 32)
-    ctx.fillStyle = '#f4c430'
+    ctx.fillRect(canvas.width / 2 - 185, canvas.height - 56, 370, 32)
+    ctx.fillStyle = prompt.golden ? '#f4c430' : '#e8e8ee'
     ctx.textAlign = 'center'
-    ctx.fillText('Press E to approach the village', canvas.width / 2, canvas.height - 34)
+    const what = prompt.golden ? 'the golden city' : 'the village'
+    ctx.fillText(`Press E to approach ${what}`, canvas.width / 2, canvas.height - 34)
     ctx.textAlign = 'left'
   }
 
@@ -319,6 +327,7 @@ if (import.meta.env.DEV) {
     // independent of requestAnimationFrame (which throttles in hidden tabs)
     step: (frames = 1) => {
       for (let i = 0; i < frames; i++) update(1 / 60)
+      render() // keep the canvas current even when rAF is throttled
     },
     teleportToVillage: (i = 0) => {
       const v = world.villages.filter((x) => !x.depleted)[i]
