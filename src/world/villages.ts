@@ -51,6 +51,21 @@ export function placeVillages(map: GameMap, count: number, minDist = 8): Village
   return vs
 }
 
+/** The closest City of Gold the player has not yet reached — used for rumors. */
+export function nearestUnvisitedGolden(vs: Village[], x: number, y: number): Village | null {
+  let best: Village | null = null
+  let bestD = Infinity
+  for (const v of vs) {
+    if (!v.golden || v.visited) continue
+    const d = Math.hypot(v.x - x, v.y - y)
+    if (d < bestD) {
+      bestD = d
+      best = v
+    }
+  }
+  return best
+}
+
 function nearCoast(map: GameMap, x: number, y: number): boolean {
   for (let dy = -2; dy <= 2; dy++) {
     for (let dx = -2; dx <= 2; dx++) {

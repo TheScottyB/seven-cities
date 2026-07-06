@@ -66,7 +66,13 @@ export function renderWorld(
 }
 
 /** Small charted-territory minimap in the corner. */
-export function renderMinimap(rc: RenderCtx, map: GameMap, fog: Fog, explorer: Explorer): void {
+export function renderMinimap(
+  rc: RenderCtx,
+  map: GameMap,
+  fog: Fog,
+  explorer: Explorer,
+  villages: Village[],
+): void {
   const { ctx, viewW } = rc
   const size = 120
   const px = viewW - size - 12
@@ -82,6 +88,12 @@ export function renderMinimap(rc: RenderCtx, map: GameMap, fog: Fog, explorer: E
       ctx.fillStyle = t === 0 ? '#1b4a8a' : '#3f6b34'
       ctx.fillRect(px + x * scale, py + y * scale, step * scale + 0.5, step * scale + 0.5)
     }
+  }
+  // charted villages: gold squares for Cities of Gold, brown for the rest
+  for (const v of villages) {
+    if (!isSeen(fog, v.x, v.y)) continue
+    ctx.fillStyle = v.golden ? '#f4c430' : v.depleted ? '#6a5138' : '#b07840'
+    ctx.fillRect(px + v.x * scale - 1, py + v.y * scale - 1, 3, 3)
   }
   ctx.fillStyle = '#ff5555'
   ctx.fillRect(px + explorer.x * scale - 1, py + explorer.y * scale - 1, 3, 3)

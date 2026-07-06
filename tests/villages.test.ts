@@ -1,5 +1,5 @@
 import { generateMap } from '../src/world/mapgen'
-import { placeVillages } from '../src/world/villages'
+import { placeVillages, nearestUnvisitedGolden } from '../src/world/villages'
 import { isWalkable } from '../src/world/tiles'
 
 test('places villages on walkable land', () => {
@@ -28,6 +28,22 @@ test('villages are spaced apart (min distance)', () => {
 test('same seed → same villages', () => {
   const m = generateMap(123)
   expect(placeVillages(m, 20)).toEqual(placeVillages(m, 20))
+})
+
+test('nearestUnvisitedGolden skips visited and non-golden villages', () => {
+  const m = generateMap(123)
+  const vs = placeVillages(m, 28)
+  const golden = vs.filter((v) => v.golden)
+  const target = nearestUnvisitedGolden(vs, golden[0].x, golden[0].y)
+  expect(target).toBe(golden[0]) // standing on it → it's the nearest
+
+  golden[0].visited = true
+  const next = nearestUnvisitedGolden(vs, golden[0].x, golden[0].y)
+  expect(next).not.toBe(golden[0])
+  expect(next?.golden).toBe(true)
+
+  for (const g of golden) g.visited = true
+  expect(nearestUnvisitedGolden(vs, 0, 0)).toBeNull()
 })
 
 test('the default map fits close to the requested village count', () => {

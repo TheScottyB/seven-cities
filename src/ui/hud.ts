@@ -10,6 +10,7 @@ export function drawHud(ctx: CanvasRenderingContext2D, viewW: number, s: GameSta
 
   const items: [string, string, string][] = [
     ['Food', Math.floor(s.food).toString(), '#7fd17f'],
+    ['Goods', Math.floor(s.goods).toString(), '#d8925c'],
     ['Crew', Math.floor(s.crew).toString(), '#e0d18a'],
     ['Gold', Math.floor(s.gold).toString(), '#f4c430'],
     ['Morale', Math.floor(s.morale).toString(), '#7fb0ff'],

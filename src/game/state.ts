@@ -8,6 +8,7 @@ export interface GameState {
   food: number
   crew: number
   gold: number
+  goods: number
   morale: number
   day: number
   elapsed: number
@@ -24,6 +25,7 @@ export function makeState(init: Partial<GameState> = {}): GameState {
     food: 420,
     crew: 100,
     gold: 0,
+    goods: 100,
     morale: 100,
     day: 1,
     elapsed: 0,
