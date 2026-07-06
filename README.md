@@ -21,20 +21,29 @@ npm run dev      # open the printed localhost URL
 | `W A S D` / arrows | Move (real-time) |
 | `E` / `Space` | Approach a nearby village |
 | `1` / `2` / `3` | Trade / Gift / Attack |
-| `Esc` | Walk away from a village |
-| `Enter` | Set sail / start a new expedition |
+| `Esc` | Walk away from a village · save & return to menu |
+| `Enter` | Outfit a new expedition / set sail |
+| `C` | Continue your saved expedition (title screen) |
+| `↑↓ ←→` | Choose and adjust line items (outfitting screen) |
 
 ## Gameplay
 
+- **Outfit in Spain:** the Crown grants 500 gold. Split it between food, trade goods, and
+  crew — whatever is left sails with you as starting gold. Trade goods are the currency of
+  the New World: trading consumes 25 (a thinner pack earns less), gifting consumes 10.
 - **Explore** a real-time, smooth-scrolling tile map. Fog of war lifts as you travel and
-  the territory you've charted stays on your map (and minimap).
+  the territory you've charted stays on your map (and minimap, where discovered villages
+  appear as dots — gold for Cities of Gold).
 - **Villages** each have a hidden temperament and wealth:
-  - **Trade** — offer goods for gold and food; rates are better with friendly villages.
-  - **Gift** — spend goodwill to make a village friendlier (and lift your morale).
+  - **Trade** — goods for gold and provisions; rates are better with friendly villages.
+  - **Gift** — spend goods for goodwill, morale, and *rumors* that chart the land around
+    the nearest unfound City of Gold.
   - **Attack** — seize all their gold, but risk your crew and morale.
 - **Resources:** food drains as your crew eats; run out and they starve. Losing all crew or
   all morale ends the expedition.
-- **Win** by finding all 7 Cities of Gold. Your score rewards gold, territory charted, and
+- **Saves:** the expedition autosaves as you travel; quit with Esc and pick it back up with
+  `C` on the title screen. The save clears when the expedition ends.
+- **Win** by reaching all 7 Cities of Gold. Your score rewards gold, territory charted, and
   villages contacted, minus the days spent.
 
 ## Tech

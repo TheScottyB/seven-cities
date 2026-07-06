@@ -14,8 +14,40 @@ export interface Village {
   depleted: boolean
 }
 
+/**
+ * Flood-fill of tiles walkable from the landing point (4-connected — the
+ * axis-sliding movement can't squeeze through diagonal gaps). Villages are
+ * only placed on this set so no City of Gold is ever stranded across water.
+ */
+export function reachableFromLanding(map: GameMap): Uint8Array {
+  const { width: w, height: h, tiles, landing } = map
+  const seen = new Uint8Array(w * h)
+  const start = landing.y * w + landing.x
+  const queue = [start]
+  seen[start] = 1
+  for (let qi = 0; qi < queue.length; qi++) {
+    const i = queue[qi]
+    const x = i % w
+    const y = (i / w) | 0
+    for (const [nx, ny] of [
+      [x + 1, y],
+      [x - 1, y],
+      [x, y + 1],
+      [x, y - 1],
+    ]) {
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+      const j = ny * w + nx
+      if (seen[j] || !isWalkable(tiles[j])) continue
+      seen[j] = 1
+      queue.push(j)
+    }
+  }
+  return seen
+}
+
 export function placeVillages(map: GameMap, count: number, minDist = 8): Village[] {
   const rng = makeRng(map.seed ^ 0x5bd1e995)
+  const reachable = reachableFromLanding(map)
   const vs: Village[] = []
   let attempts = 0
 
@@ -25,6 +57,7 @@ export function placeVillages(map: GameMap, count: number, minDist = 8): Village
     const y = Math.floor(rng() * map.height)
     const t = map.tiles[y * map.width + x]
     if (!isWalkable(t) || t === TILE.BEACH) continue
+    if (!reachable[y * map.width + x]) continue
     if (nearCoast(map, x, y)) continue
     if (vs.some((v) => Math.hypot(v.x - x, v.y - y) < minDist)) continue
     vs.push({

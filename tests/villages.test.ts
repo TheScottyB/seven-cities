@@ -1,5 +1,5 @@
 import { generateMap } from '../src/world/mapgen'
-import { placeVillages, nearestUnvisitedGolden } from '../src/world/villages'
+import { placeVillages, nearestUnvisitedGolden, reachableFromLanding } from '../src/world/villages'
 import { isWalkable } from '../src/world/tiles'
 
 test('places villages on walkable land', () => {
@@ -44,6 +44,20 @@ test('nearestUnvisitedGolden skips visited and non-golden villages', () => {
 
   for (const g of golden) g.visited = true
   expect(nearestUnvisitedGolden(vs, 0, 0)).toBeNull()
+})
+
+test('every village is walk-reachable from the landing point (many seeds)', () => {
+  // guards against unwinnable maps: a City of Gold stranded across water
+  // can never be reached on foot
+  for (const seed of [1, 2, 123, 999, 31415]) {
+    const m = generateMap(seed)
+    const reach = reachableFromLanding(m)
+    const vs = placeVillages(m, 28)
+    expect(vs.length).toBeGreaterThanOrEqual(20)
+    for (const v of vs) {
+      expect(reach[v.y * m.width + v.x]).toBe(1)
+    }
+  }
 })
 
 test('the default map fits close to the requested village count', () => {

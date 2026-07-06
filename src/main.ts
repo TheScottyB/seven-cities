@@ -305,7 +305,7 @@ function render() {
     ctx.textAlign = 'left'
   }
 
-  if (flash.t > 0) drawResult(ctx, canvas.width, canvas.height, flash.text)
+  if (flash.t > 0 && screen === 'playing') drawResult(ctx, canvas.width, canvas.height, flash.text)
   if (encounter) drawEncounter(ctx, canvas.width, canvas.height, encounter, world.state.goods)
 
   if (screen === 'over') {

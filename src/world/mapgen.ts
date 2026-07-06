@@ -1,5 +1,5 @@
 import { makeNoise2D } from './noise'
-import { TILE } from './tiles'
+import { TILE, isWalkable } from './tiles'
 
 export interface GameMap {
   width: number
@@ -42,17 +42,61 @@ function classify(e: number, m: number): number {
   return TILE.GRASS
 }
 
-/** Scan outward from the vertical centre for the first coastal land tile. */
+/**
+ * Land on the LARGEST connected walkable landmass — never a tiny offshore
+ * islet the expedition could be stranded on. Among the mainland's tiles,
+ * pick the west-most, then most central, as the landfall beach.
+ */
 function findLanding(tiles: Uint8Array, w: number, h: number): { x: number; y: number } {
-  const cy = Math.floor(h / 2)
-  for (let dy = 0; dy < h; dy++) {
-    for (const y of [cy - dy, cy + dy]) {
-      if (y < 0 || y >= h) continue
-      for (let x = 0; x < w; x++) {
-        const t = tiles[y * w + x]
-        if (t === TILE.BEACH || t === TILE.GRASS) return { x, y }
+  const comp = new Int32Array(w * h).fill(-1)
+  let bestComp = -1
+  let bestSize = 0
+  let nComps = 0
+
+  for (let i = 0; i < w * h; i++) {
+    if (comp[i] !== -1 || !isWalkable(tiles[i])) continue
+    const queue = [i]
+    comp[i] = nComps
+    let size = 0
+    for (let qi = 0; qi < queue.length; qi++) {
+      const j = queue[qi]
+      size++
+      const x = j % w
+      const y = (j / w) | 0
+      for (const [nx, ny] of [
+        [x + 1, y],
+        [x - 1, y],
+        [x, y + 1],
+        [x, y - 1],
+      ]) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+        const k = ny * w + nx
+        if (comp[k] === -1 && isWalkable(tiles[k])) {
+          comp[k] = nComps
+          queue.push(k)
+        }
+      }
+    }
+    if (size > bestSize) {
+      bestSize = size
+      bestComp = nComps
+    }
+    nComps++
+  }
+
+  let pick = -1
+  let pickKey = Infinity
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x
+      if (comp[i] !== bestComp) continue
+      const key = x * 1000 + Math.abs(y - h / 2) // west-most first, then central
+      if (key < pickKey) {
+        pickKey = key
+        pick = i
       }
     }
   }
-  return { x: Math.floor(w / 2), y: cy }
+  if (pick === -1) return { x: Math.floor(w / 2), y: Math.floor(h / 2) }
+  return { x: pick % w, y: (pick / w) | 0 }
 }
