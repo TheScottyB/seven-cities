@@ -15,17 +15,61 @@ export interface Village {
 }
 
 /**
- * Flood-fill from the landing over land AND ocean (4-connected). With the
- * ship you can board or step ashore at any coast, so a tile is reachable if
- * some mix of walking and sailing gets there — only mountains block. Villages
- * are placed on this set, so islands are fair game but nothing is stranded
- * behind terrain you cannot cross.
+ * Tiles the expedition can actually reach with its ONE ship (4-connected).
+ * You may walk any walkable land and sail only the ship's own sea — the
+ * ocean component beside the landing where the caravel moors. Land and that
+ * sea interchange freely at any coast (board / step ashore), but the ship
+ * can never portage into a separate basin, so other ocean components are
+ * off-limits. Villages are placed on this set: islands in the home sea are
+ * fair game, but nothing hides behind water the ship cannot enter.
  */
 export function reachableAmphibious(map: GameMap): Uint8Array {
   const { width: w, height: h, tiles, landing } = map
-  const passable = (t: number) => isWalkable(t) || t === TILE.OCEAN
+  const idx = (x: number, y: number) => y * w + x
+
+  // flood the ship's sea from the ocean tile nearest the landing (the mooring)
+  const mainSea = new Uint8Array(w * h)
+  let mooring = -1
+  outer: for (let r = 1; r < 24; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+        const x = landing.x + dx
+        const y = landing.y + dy
+        if (x < 0 || y < 0 || x >= w || y >= h) continue
+        if (tiles[idx(x, y)] === TILE.OCEAN) {
+          mooring = idx(x, y)
+          break outer
+        }
+      }
+    }
+  }
+  if (mooring !== -1) {
+    const q = [mooring]
+    mainSea[mooring] = 1
+    for (let qi = 0; qi < q.length; qi++) {
+      const i = q[qi]
+      const x = i % w
+      const y = (i / w) | 0
+      for (const [nx, ny] of [
+        [x + 1, y],
+        [x - 1, y],
+        [x, y + 1],
+        [x, y - 1],
+      ]) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+        const j = idx(nx, ny)
+        if (!mainSea[j] && tiles[j] === TILE.OCEAN) {
+          mainSea[j] = 1
+          q.push(j)
+        }
+      }
+    }
+  }
+
+  const passable = (i: number) => isWalkable(tiles[i]) || mainSea[i] === 1
   const seen = new Uint8Array(w * h)
-  const start = landing.y * w + landing.x
+  const start = idx(landing.x, landing.y)
   const queue = [start]
   seen[start] = 1
   for (let qi = 0; qi < queue.length; qi++) {
@@ -39,8 +83,8 @@ export function reachableAmphibious(map: GameMap): Uint8Array {
       [x, y - 1],
     ]) {
       if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
-      const j = ny * w + nx
-      if (seen[j] || !passable(tiles[j])) continue
+      const j = idx(nx, ny)
+      if (seen[j] || !passable(j)) continue
       seen[j] = 1
       queue.push(j)
     }

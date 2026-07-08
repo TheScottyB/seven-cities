@@ -381,6 +381,11 @@ if (import.meta.env.DEV) {
       for (let i = 0; i < frames; i++) update(1 / 60)
       render() // keep the canvas current even when rAF is throttled
     },
+    setSeed: (s: string) => {
+      world = newWorld(s)
+      encounter = null
+      screen = 'start'
+    },
     teleportToVillage: (i = 0) => {
       const v = world.villages.filter((x) => !x.depleted)[i]
       if (v) {
