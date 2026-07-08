@@ -19,6 +19,34 @@ export function drawExplorer(g: CanvasRenderingContext2D, cx: number, cy: number
   g.fillRect(cx - s * 0.2, cy - s * 0.42, s * 0.4, s * 0.14)
 }
 
+/** The expedition's caravel: dark hull, white sail, pennant. */
+export function drawShip(g: CanvasRenderingContext2D, cx: number, cy: number): void {
+  const s = TILE_PX
+  // hull
+  g.fillStyle = '#5a3a22'
+  g.beginPath()
+  g.moveTo(cx - s * 0.45, cy + s * 0.05)
+  g.lineTo(cx + s * 0.45, cy + s * 0.05)
+  g.lineTo(cx + s * 0.28, cy + s * 0.35)
+  g.lineTo(cx - s * 0.28, cy + s * 0.35)
+  g.closePath()
+  g.fill()
+  // mast
+  g.fillStyle = '#3a2a18'
+  g.fillRect(cx - s * 0.04, cy - s * 0.45, s * 0.08, s * 0.5)
+  // sail
+  g.fillStyle = '#e8e4d8'
+  g.beginPath()
+  g.moveTo(cx + s * 0.04, cy - s * 0.42)
+  g.lineTo(cx + s * 0.38, cy - s * 0.02)
+  g.lineTo(cx + s * 0.04, cy - s * 0.02)
+  g.closePath()
+  g.fill()
+  // pennant
+  g.fillStyle = '#b1372f'
+  g.fillRect(cx - s * 0.2, cy - s * 0.48, s * 0.16, s * 0.09)
+}
+
 /** A village: cluster of huts, gold-roofed if it's one of the fabled cities. */
 export function drawVillage(
   g: CanvasRenderingContext2D,

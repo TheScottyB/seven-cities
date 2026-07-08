@@ -24,6 +24,8 @@ test('save round-trips the full expedition', () => {
     seedStr: '1492',
     state,
     explorer: { x: 50.5, y: 60.25 },
+    ship: { x: 48.5, y: 61.5 },
+    sailing: true,
     fogSeen: fog.seen,
     villages,
   })
@@ -32,6 +34,8 @@ test('save round-trips the full expedition', () => {
   expect(back.seedStr).toBe('1492')
   expect(back.state).toEqual(state)
   expect(back.explorer).toEqual({ x: 50.5, y: 60.25 })
+  expect(back.ship).toEqual({ x: 48.5, y: 61.5 })
+  expect(back.sailing).toBe(true)
   expect(Array.from(unpackBits(back.fogSeenB64, fog.seen.length))).toEqual(Array.from(fog.seen))
   expect(back.villages).toEqual(villages)
 })
@@ -39,6 +43,8 @@ test('save round-trips the full expedition', () => {
 test('garbage and wrong versions are rejected', () => {
   expect(deserializeSave('not json {{{')).toBeNull()
   expect(deserializeSave('{"version": 99}')).toBeNull()
-  expect(deserializeSave('{"version": 1}')).toBeNull() // missing fields
+  expect(deserializeSave('{"version": 2}')).toBeNull() // missing fields
   expect(deserializeSave('null')).toBeNull()
+  // v1 saves (pre-sailing) have no ship state and are rejected cleanly
+  expect(deserializeSave('{"version": 1, "seedStr": "x", "fogSeenB64": ""}')).toBeNull()
 })

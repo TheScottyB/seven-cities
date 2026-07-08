@@ -19,7 +19,7 @@ npm run dev      # open the printed localhost URL
 | Keys | Action |
 |------|--------|
 | `W A S D` / arrows | Move (real-time) |
-| `E` / `Space` | Approach a nearby village |
+| `E` / `Space` | Approach a village · board your ship · make landfall |
 | `1` / `2` / `3` | Trade / Gift / Attack |
 | `Esc` | Walk away from a village · save & return to menu |
 | `Enter` | Outfit a new expedition / set sail |
@@ -28,6 +28,9 @@ npm run dev      # open the printed localhost URL
 
 ## Gameplay
 
+- **Sail between landmasses:** your caravel waits offshore where you landed. Board it at
+  the coast (`E`), sail the open ocean (faster than marching, same hungry crew), and step
+  ashore on any coastline — islands can hide villages and Cities of Gold.
 - **Outfit in Spain:** the Crown grants 500 gold. Split it between food, trade goods, and
   crew — whatever is left sails with you as starting gold. Trade goods are the currency of
   the New World: trading consumes 25 (a thinner pack earns less), gifting consumes 10.

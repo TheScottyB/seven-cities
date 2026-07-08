@@ -4,7 +4,7 @@ import { Explorer } from '../game/explorer'
 import type { Village } from '../world/villages'
 import { Camera, worldToScreen } from './camera'
 import { TILE_PX } from '../art/tileset'
-import { drawExplorer, drawVillage } from '../art/sprites'
+import { drawExplorer, drawVillage, drawShip } from '../art/sprites'
 
 export interface RenderCtx {
   ctx: CanvasRenderingContext2D
@@ -23,6 +23,8 @@ export function renderWorld(
   fog: Fog,
   villages: Village[],
   explorer: Explorer,
+  ship: { x: number; y: number },
+  sailing: boolean,
 ): void {
   const { ctx, viewW, viewH, tileset } = rc
   ctx.fillStyle = '#05060a'
@@ -61,8 +63,15 @@ export function renderWorld(
     ctx.globalAlpha = 1
   }
 
+  // the moored ship, once its waters are charted
+  if (!sailing && isSeen(fog, Math.floor(ship.x), Math.floor(ship.y))) {
+    const p = worldToScreen(cam, viewW, viewH, ship.x, ship.y)
+    drawShip(ctx, p.sx, p.sy)
+  }
+
   const { sx, sy } = worldToScreen(cam, viewW, viewH, explorer.x, explorer.y)
-  drawExplorer(ctx, sx, sy)
+  if (sailing) drawShip(ctx, sx, sy)
+  else drawExplorer(ctx, sx, sy)
 }
 
 /** Small charted-territory minimap in the corner. */
@@ -72,6 +81,7 @@ export function renderMinimap(
   fog: Fog,
   explorer: Explorer,
   villages: Village[],
+  ship?: { x: number; y: number },
 ): void {
   const { ctx, viewW } = rc
   const size = 120
@@ -97,4 +107,8 @@ export function renderMinimap(
   }
   ctx.fillStyle = '#ff5555'
   ctx.fillRect(px + explorer.x * scale - 1, py + explorer.y * scale - 1, 3, 3)
+  if (ship) {
+    ctx.fillStyle = '#cfe6ff'
+    ctx.fillRect(px + ship.x * scale - 1, py + ship.y * scale - 1, 3, 3)
+  }
 }

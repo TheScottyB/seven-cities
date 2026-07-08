@@ -15,12 +15,15 @@ export interface Village {
 }
 
 /**
- * Flood-fill of tiles walkable from the landing point (4-connected — the
- * axis-sliding movement can't squeeze through diagonal gaps). Villages are
- * only placed on this set so no City of Gold is ever stranded across water.
+ * Flood-fill from the landing over land AND ocean (4-connected). With the
+ * ship you can board or step ashore at any coast, so a tile is reachable if
+ * some mix of walking and sailing gets there — only mountains block. Villages
+ * are placed on this set, so islands are fair game but nothing is stranded
+ * behind terrain you cannot cross.
  */
-export function reachableFromLanding(map: GameMap): Uint8Array {
+export function reachableAmphibious(map: GameMap): Uint8Array {
   const { width: w, height: h, tiles, landing } = map
+  const passable = (t: number) => isWalkable(t) || t === TILE.OCEAN
   const seen = new Uint8Array(w * h)
   const start = landing.y * w + landing.x
   const queue = [start]
@@ -37,7 +40,7 @@ export function reachableFromLanding(map: GameMap): Uint8Array {
     ]) {
       if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
       const j = ny * w + nx
-      if (seen[j] || !isWalkable(tiles[j])) continue
+      if (seen[j] || !passable(tiles[j])) continue
       seen[j] = 1
       queue.push(j)
     }
@@ -47,7 +50,7 @@ export function reachableFromLanding(map: GameMap): Uint8Array {
 
 export function placeVillages(map: GameMap, count: number, minDist = 8): Village[] {
   const rng = makeRng(map.seed ^ 0x5bd1e995)
-  const reachable = reachableFromLanding(map)
+  const reachable = reachableAmphibious(map)
   const vs: Village[] = []
   let attempts = 0
 

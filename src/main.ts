@@ -3,6 +3,7 @@ import { placeVillages, nearestUnvisitedGolden, type Village } from './world/vil
 import { makeFog, reveal } from './world/fog'
 import { makeState, tick, score, GameStatus } from './game/state'
 import { makeExplorer, moveExplorer } from './game/explorer'
+import { findMooring, moveShip, landingSpots, type Ship } from './game/ship'
 import { discoverVillage, resolveTrade, resolveGift, resolveAttack } from './game/encounter'
 import { defaultOutfit, adjustOutfit, remainingBudget, type Outfit } from './game/outfit'
 import { serializeSave, deserializeSave, unpackBits, type SaveData } from './game/save'
@@ -16,6 +17,7 @@ import { drawStartScreen, drawOutfitScreen, drawEncounter, drawGameOver, drawRes
 import { seedFromString } from './world/rng'
 
 const REVEAL_RADIUS = 7
+const BOARD_DIST = 2.0
 const VILLAGE_COUNT = 28
 const INTERACT_DIST = 1.4
 const RUMOR_RADIUS = 4
@@ -42,6 +44,8 @@ interface World {
   fog: ReturnType<typeof makeFog>
   state: ReturnType<typeof makeState>
   explorer: ReturnType<typeof makeExplorer>
+  ship: Ship
+  sailing: boolean
   cam: Camera
 }
 
@@ -61,8 +65,12 @@ function newWorld(seedStr: string): World {
   const villages = placeVillages(map, VILLAGE_COUNT)
   const fog = makeFog(map.width, map.height)
   const explorer = makeExplorer(map)
+  const ship = findMooring(map)
   reveal(fog, Math.floor(explorer.x), Math.floor(explorer.y), REVEAL_RADIUS)
-  return { seedStr, map, villages, fog, state: makeState(), explorer, cam: { x: explorer.x, y: explorer.y } }
+  return {
+    seedStr, map, villages, fog, state: makeState(), explorer,
+    ship, sailing: false, cam: { x: explorer.x, y: explorer.y },
+  }
 }
 
 function embark() {
@@ -86,6 +94,8 @@ function saveGame() {
         seedStr: world.seedStr,
         state: world.state,
         explorer: { x: world.explorer.x, y: world.explorer.y },
+        ship: { x: world.ship.x, y: world.ship.y },
+        sailing: world.sailing,
         fogSeen: world.fog.seen,
         villages: world.villages,
       }),
@@ -117,6 +127,8 @@ function restoreWorld(save: SaveData): World {
   w.state = { ...save.state }
   w.explorer.x = save.explorer.x
   w.explorer.y = save.explorer.y
+  w.ship = { ...save.ship }
+  w.sailing = save.sailing
   w.fog.seen = unpackBits(save.fogSeenB64, w.fog.seen.length)
   w.fog.revealedCount = w.fog.seen.reduce((a, b) => a + b, 0)
   // the map (and thus village placement) regenerates identically from the
@@ -198,19 +210,44 @@ function update(dt: number) {
     else if (input.pressed('esc')) encounter = null
   } else {
     const { dx, dy } = input.axis()
-    moveExplorer(map, explorer, dx, dy, sdt)
+    if (world.sailing) {
+      // while sailing, the explorer IS the ship
+      moveShip(map, explorer, dx, dy, sdt)
+      world.ship.x = explorer.x
+      world.ship.y = explorer.y
+    } else {
+      moveExplorer(map, explorer, dx, dy, sdt)
+    }
     reveal(fog, Math.floor(explorer.x), Math.floor(explorer.y), REVEAL_RADIUS)
     tick(state, sdt)
 
     if (input.pressed('action')) {
-      const v = nearestVillage()
-      if (v) {
-        const firstGolden = v.golden && !v.visited
-        discoverVillage(state, v)
-        if (firstGolden) {
-          flash = { text: `A City of Gold — ${state.citiesFound} of 7 found!`, t: 3 }
+      if (world.sailing) {
+        const spots = landingSpots(map, explorer.x, explorer.y)
+        if (spots.length) {
+          // step ashore; the ship stays moored where we left it
+          world.sailing = false
+          explorer.x = spots[0][0] + 0.5
+          explorer.y = spots[0][1] + 0.5
+          flash = { text: 'You make landfall.', t: 2 }
+          saveGame()
         }
-        encounter = v
+      } else {
+        const v = nearestVillage()
+        if (v) {
+          const firstGolden = v.golden && !v.visited
+          discoverVillage(state, v)
+          if (firstGolden) {
+            flash = { text: `A City of Gold — ${state.citiesFound} of 7 found!`, t: 3 }
+          }
+          encounter = v
+        } else if (Math.hypot(world.ship.x - explorer.x, world.ship.y - explorer.y) <= BOARD_DIST) {
+          world.sailing = true
+          explorer.x = world.ship.x
+          explorer.y = world.ship.y
+          flash = { text: 'You board your ship. The coast is yours to follow.', t: 2 }
+          saveGame()
+        }
       }
     }
 
@@ -289,20 +326,35 @@ function render() {
     return
   }
 
-  renderWorld(rc, world.cam, world.map, world.fog, world.villages, world.explorer)
-  renderMinimap(rc, world.map, world.fog, world.explorer, world.villages)
+  renderWorld(rc, world.cam, world.map, world.fog, world.villages, world.explorer, world.ship, world.sailing)
+  renderMinimap(rc, world.map, world.fog, world.explorer, world.villages, world.ship)
   drawHud(ctx, canvas.width, world.state)
 
-  const prompt = nearestVillage()
-  if (prompt && !encounter && screen === 'playing') {
-    ctx.font = "16px 'Courier New', monospace"
-    ctx.fillStyle = 'rgba(0,0,0,0.6)'
-    ctx.fillRect(canvas.width / 2 - 185, canvas.height - 56, 370, 32)
-    ctx.fillStyle = prompt.golden ? '#f4c430' : '#e8e8ee'
-    ctx.textAlign = 'center'
-    const what = prompt.golden ? 'the golden city' : 'the village'
-    ctx.fillText(`Press E to approach ${what}`, canvas.width / 2, canvas.height - 34)
-    ctx.textAlign = 'left'
+  if (!encounter && screen === 'playing') {
+    let text = ''
+    let color = '#e8e8ee'
+    if (world.sailing) {
+      if (landingSpots(world.map, world.explorer.x, world.explorer.y).length) {
+        text = 'Press E to make landfall'
+      }
+    } else {
+      const prompt = nearestVillage()
+      if (prompt) {
+        text = `Press E to approach ${prompt.golden ? 'the golden city' : 'the village'}`
+        if (prompt.golden) color = '#f4c430'
+      } else if (Math.hypot(world.ship.x - world.explorer.x, world.ship.y - world.explorer.y) <= BOARD_DIST) {
+        text = 'Press E to board your ship'
+      }
+    }
+    if (text) {
+      ctx.font = "16px 'Courier New', monospace"
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'
+      ctx.fillRect(canvas.width / 2 - 185, canvas.height - 56, 370, 32)
+      ctx.fillStyle = color
+      ctx.textAlign = 'center'
+      ctx.fillText(text, canvas.width / 2, canvas.height - 34)
+      ctx.textAlign = 'left'
+    }
   }
 
   if (flash.t > 0 && screen === 'playing') drawResult(ctx, canvas.width, canvas.height, flash.text)
