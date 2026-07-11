@@ -8,7 +8,7 @@ import type { Village } from '../world/villages'
  * bit-packed then base64'd (~6 KB for a 192x192 map).
  */
 export interface SaveData {
-  version: 2
+  version: 3
   seedStr: string
   state: GameState
   explorer: { x: number; y: number }
@@ -45,7 +45,7 @@ export function serializeSave(data: {
   villages: Village[]
 }): string {
   const save: SaveData = {
-    version: 2,
+    version: 3,
     seedStr: data.seedStr,
     state: data.state,
     explorer: data.explorer,
@@ -60,7 +60,7 @@ export function serializeSave(data: {
 export function deserializeSave(json: string): SaveData | null {
   try {
     const d = JSON.parse(json)
-    if (!d || typeof d !== 'object' || d.version !== 2) return null
+    if (!d || typeof d !== 'object' || d.version !== 3) return null
     if (typeof d.seedStr !== 'string' || typeof d.fogSeenB64 !== 'string') return null
     if (!d.state || typeof d.state.food !== 'number' || typeof d.state.goods !== 'number') return null
     if (!d.explorer || typeof d.explorer.x !== 'number' || typeof d.explorer.y !== 'number') return null

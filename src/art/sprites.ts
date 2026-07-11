@@ -19,6 +19,32 @@ export function drawExplorer(g: CanvasRenderingContext2D, cx: number, cy: number
   g.fillRect(cx - s * 0.2, cy - s * 0.42, s * 0.4, s * 0.14)
 }
 
+/** A dugout canoe with a paddler — how the expedition travels rivers. */
+export function drawCanoe(g: CanvasRenderingContext2D, cx: number, cy: number): void {
+  const s = TILE_PX
+  // hull: a slim pointed dugout
+  g.fillStyle = '#7a4a24'
+  g.beginPath()
+  g.moveTo(cx - s * 0.5, cy + s * 0.12)
+  g.quadraticCurveTo(cx, cy + s * 0.4, cx + s * 0.5, cy + s * 0.12)
+  g.quadraticCurveTo(cx, cy + s * 0.22, cx - s * 0.5, cy + s * 0.12)
+  g.fill()
+  // paddler
+  g.fillStyle = '#e3c1a0'
+  g.beginPath()
+  g.arc(cx, cy - s * 0.12, s * 0.14, 0, Math.PI * 2)
+  g.fill()
+  g.fillStyle = '#b1372f'
+  g.fillRect(cx - s * 0.12, cy - s * 0.02, s * 0.24, s * 0.18)
+  // paddle
+  g.strokeStyle = '#5a3a22'
+  g.lineWidth = 2
+  g.beginPath()
+  g.moveTo(cx - s * 0.3, cy + s * 0.28)
+  g.lineTo(cx + s * 0.3, cy - s * 0.18)
+  g.stroke()
+}
+
 /** The expedition's caravel: dark hull, white sail, pennant. */
 export function drawShip(g: CanvasRenderingContext2D, cx: number, cy: number): void {
   const s = TILE_PX

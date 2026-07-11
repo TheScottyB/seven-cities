@@ -1,4 +1,5 @@
 import { makeNoise2D } from './noise'
+import { makeRng } from './rng'
 import { TILE, isWalkable } from './tiles'
 
 export interface GameMap {
@@ -13,6 +14,7 @@ export function generateMap(seed: number, width = 192, height = 192): GameMap {
   const elev = makeNoise2D(seed, 12)
   const moist = makeNoise2D(seed ^ 0x9e3779b9, 10)
   const tiles = new Uint8Array(width * height)
+  const elevation = new Float32Array(width * height)
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -23,12 +25,82 @@ export function generateMap(seed: number, width = 192, height = 192): GameMap {
       let e = elev(x, y) * 0.85 + edge * 0.6 - 0.15
       // push the west margin firmly into ocean so there's a coastline to land on
       if (nx < 0.12) e -= (0.12 - nx) * 3
+      elevation[y * width + x] = e
       tiles[y * width + x] = classify(e, moist(x, y))
     }
   }
 
+  carveRivers(seed, tiles, elevation, width, height)
+
   const landing = findLanding(tiles, width, height)
   return { width, height, tiles, landing, seed }
+}
+
+/**
+ * Rivers rise in the highlands and run downhill to the sea, joining any
+ * river they meet. They are canoe routes: fast inland highways for the
+ * expedition (and a course only carved if it actually reaches water).
+ */
+function carveRivers(
+  seed: number,
+  tiles: Uint8Array,
+  elevation: Float32Array,
+  w: number,
+  h: number,
+  count = 9,
+): void {
+  const rng = makeRng(seed ^ 0x27d4eb2f)
+  let carved = 0
+  let attempts = 0
+
+  while (carved < count && attempts < count * 60) {
+    attempts++
+    const sx = Math.floor(rng() * w)
+    const sy = Math.floor(rng() * h)
+    const si = sy * w + sx
+    if (tiles[si] === TILE.OCEAN || tiles[si] === TILE.RIVER || tiles[si] === TILE.MOUNTAIN) continue
+    if (elevation[si] < 0.6) continue // sources rise in the highlands
+
+    // descend: always step to the lowest neighbor not already in the course
+    let cx = sx
+    let cy = sy
+    const course: number[] = []
+    let reachedWater = false
+    for (let steps = 0; steps < 400; steps++) {
+      const ci = cy * w + cx
+      if (tiles[ci] === TILE.OCEAN || tiles[ci] === TILE.RIVER) {
+        reachedWater = true
+        break
+      }
+      course.push(ci)
+      let best = -1
+      let bestE = Infinity
+      for (const [nx, ny] of [
+        [cx + 1, cy],
+        [cx - 1, cy],
+        [cx, cy + 1],
+        [cx, cy - 1],
+      ]) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+        const ni = ny * w + nx
+        if (course.includes(ni)) continue
+        if (elevation[ni] < bestE) {
+          bestE = elevation[ni]
+          best = ni
+        }
+      }
+      if (best === -1) break
+      cx = best % w
+      cy = (best / w) | 0
+    }
+
+    if (reachedWater && course.length >= 6) {
+      for (const ci of course) {
+        if (tiles[ci] !== TILE.MOUNTAIN) tiles[ci] = TILE.RIVER
+      }
+      carved++
+    }
+  }
 }
 
 function classify(e: number, m: number): number {

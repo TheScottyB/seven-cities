@@ -103,7 +103,7 @@ export function placeVillages(map: GameMap, count: number, minDist = 8): Village
     const x = Math.floor(rng() * map.width)
     const y = Math.floor(rng() * map.height)
     const t = map.tiles[y * map.width + x]
-    if (!isWalkable(t) || t === TILE.BEACH) continue
+    if (!isWalkable(t) || t === TILE.BEACH || t === TILE.RIVER) continue
     if (!reachable[y * map.width + x]) continue
     if (nearCoast(map, x, y)) continue
     if (vs.some((v) => Math.hypot(v.x - x, v.y - y) < minDist)) continue

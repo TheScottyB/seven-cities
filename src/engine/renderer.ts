@@ -4,7 +4,8 @@ import { Explorer } from '../game/explorer'
 import type { Village } from '../world/villages'
 import { Camera, worldToScreen } from './camera'
 import { TILE_PX } from '../art/tileset'
-import { drawExplorer, drawVillage, drawShip } from '../art/sprites'
+import { drawExplorer, drawVillage, drawShip, drawCanoe } from '../art/sprites'
+import { TILE } from '../world/tiles'
 
 export interface RenderCtx {
   ctx: CanvasRenderingContext2D
@@ -70,7 +71,9 @@ export function renderWorld(
   }
 
   const { sx, sy } = worldToScreen(cam, viewW, viewH, explorer.x, explorer.y)
+  const underfoot = map.tiles[Math.floor(explorer.y) * map.width + Math.floor(explorer.x)]
   if (sailing) drawShip(ctx, sx, sy)
+  else if (underfoot === TILE.RIVER) drawCanoe(ctx, sx, sy)
   else drawExplorer(ctx, sx, sy)
 }
 

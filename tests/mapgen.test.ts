@@ -17,6 +17,15 @@ test('map has both land and ocean', () => {
   expect(land).toBeGreaterThan(0)
 })
 
+test('maps have rivers (canoe routes)', () => {
+  for (const seed of [123, 1, 999]) {
+    const m = generateMap(seed)
+    let rivers = 0
+    for (const t of m.tiles) if (t === TILE.RIVER) rivers++
+    expect(rivers).toBeGreaterThan(20)
+  }
+})
+
 test('landing point is on walkable land', () => {
   const m = generateMap(123)
   const i = m.landing.y * m.width + m.landing.x

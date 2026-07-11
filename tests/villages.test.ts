@@ -9,6 +9,15 @@ test('places villages on walkable land', () => {
   for (const v of vs) expect(isWalkable(m.tiles[v.y * m.width + v.x])).toBe(true)
 })
 
+test('villages never sit on a river tile', () => {
+  for (const seed of [123, 1, 999]) {
+    const m = generateMap(seed)
+    for (const v of placeVillages(m, 28)) {
+      expect(m.tiles[v.y * m.width + v.x]).not.toBe(8) // TILE.RIVER
+    }
+  }
+})
+
 test('exactly 7 golden cities', () => {
   const m = generateMap(123)
   const vs = placeVillages(m, 20)

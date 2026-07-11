@@ -26,7 +26,8 @@ const INFO: Record<number, TileInfo> = {
   [TILE.DESERT]: { color: '#d9b45a', speed: 0.8, walkable: true },
   [TILE.HIGHLAND]: { color: '#8a7a52', speed: 0.7, walkable: true },
   [TILE.MOUNTAIN]: { color: '#6d6d6d', speed: 0, walkable: false },
-  [TILE.RIVER]: { color: '#3a7ac0', speed: 0.4, walkable: true },
+  // stepping onto a river means taking to canoes — rivers are fast inland highways
+  [TILE.RIVER]: { color: '#3a7ac0', speed: 1.8, walkable: true },
 }
 
 export function tileInfo(t: number): TileInfo {

@@ -43,8 +43,10 @@ test('save round-trips the full expedition', () => {
 test('garbage and wrong versions are rejected', () => {
   expect(deserializeSave('not json {{{')).toBeNull()
   expect(deserializeSave('{"version": 99}')).toBeNull()
-  expect(deserializeSave('{"version": 2}')).toBeNull() // missing fields
+  expect(deserializeSave('{"version": 3}')).toBeNull() // missing fields
   expect(deserializeSave('null')).toBeNull()
-  // v1 saves (pre-sailing) have no ship state and are rejected cleanly
+  // pre-river saves (v1/v2) reference maps that no longer generate the same;
+  // both are rejected cleanly
   expect(deserializeSave('{"version": 1, "seedStr": "x", "fogSeenB64": ""}')).toBeNull()
+  expect(deserializeSave('{"version": 2, "seedStr": "x", "fogSeenB64": ""}')).toBeNull()
 })

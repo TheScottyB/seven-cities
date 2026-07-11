@@ -28,6 +28,8 @@ npm run dev      # open the printed localhost URL
 
 ## Gameplay
 
+- **Canoe the rivers:** rivers rise in the highlands and run to the sea. Step onto one and
+  your expedition takes to canoes — nearly twice walking pace, the fastest way inland.
 - **Sail between landmasses:** your caravel waits offshore where you landed. Board it at
   the coast (`E`), sail the open ocean (faster than marching, same hungry crew), and step
   ashore on any coastline — islands can hide villages and Cities of Gold.
