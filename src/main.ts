@@ -80,6 +80,7 @@ function embark() {
   world.state.crew = outfit.crew
   world.state.gold = remainingBudget(outfit)
   encounter = null
+  flash = { text: '', t: 0 } // no toast carried over from a previous run
   screen = 'playing'
 }
 
