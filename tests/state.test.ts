@@ -11,6 +11,18 @@ test('food drains over time', () => {
   expect(s.food).toBeLessThan(before)
 })
 
+test('a full day feeds heavily and scales with crew size', () => {
+  const day = 20 // seconds per game day
+  const small = makeState({ food: 500, crew: 10 })
+  const large = makeState({ food: 500, crew: 50 })
+  tick(small, day)
+  tick(large, day)
+  const smallEaten = 500 - small.food
+  const largeEaten = 500 - large.food
+  expect(smallEaten).toBeGreaterThan(8) // hunger bites even for a small party
+  expect(largeEaten).toBeGreaterThan(smallEaten * 1.8) // and scales with mouths
+})
+
 test('starvation costs crew and morale', () => {
   const s = base()
   s.food = 0

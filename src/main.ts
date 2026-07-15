@@ -411,9 +411,13 @@ function update(dt: number) {
     } else {
       moveExplorer(map, explorer, dx, dy, sdt)
     }
+    const foodBefore = state.food
     reveal(fog, Math.floor(explorer.x), Math.floor(explorer.y), REVEAL_RADIUS)
     tick(state, sdt)
     tickOutposts(world.outposts, sdt)
+    if (foodBefore >= 80 && state.food < 80) {
+      flash = { text: 'Provisions run low — find a fort, a trade, or sail for Spain!', t: 3.5 }
+    }
 
     if (!world.sailing && input.pressed('f')) {
       // raise a mission fort here

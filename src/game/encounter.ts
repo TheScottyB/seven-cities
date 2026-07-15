@@ -37,9 +37,9 @@ export function resolveTrade(s: GameState, v: Village, roll: Roll = Math.random)
   const gold = Math.floor(v.wealth * rate * (0.6 + roll() * 0.4) * strength)
   s.goods -= spent
   s.gold += gold
-  // modest provisions alongside the gold — enough to help, not enough to
-  // erase food pressure for the rest of the run
-  s.food += Math.floor(gold * 0.15)
+  // a token of provisions alongside the gold — real food comes from Spain
+  // and the mission forts, not from trading
+  s.food += Math.floor(gold * 0.05)
   s.morale = clamp(s.morale + 3, 0, 100)
   v.depleted = true
 }

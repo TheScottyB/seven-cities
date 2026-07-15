@@ -19,7 +19,6 @@ export interface GameState {
   status: GameStatus
 }
 
-const FOOD_PER_SEC = 0.5
 const SECONDS_PER_DAY = 20
 
 export function makeState(init: Partial<GameState> = {}): GameState {
@@ -44,7 +43,9 @@ export function tick(s: GameState, dt: number): void {
   s.elapsed += dt
   s.day = 1 + Math.floor(s.elapsed / SECONDS_PER_DAY)
 
-  const eaten = FOOD_PER_SEC * dt * (s.crew / 100)
+  // hunger is a real budget line: a base camp cost plus a per-man share —
+  // ~19 food per day for a 25-man expedition
+  const eaten = dt * (0.2 + s.crew * 0.03)
   s.food = Math.max(0, s.food - eaten)
   if (s.food <= 0) {
     s.crew = Math.max(0, s.crew - dt * 2)
