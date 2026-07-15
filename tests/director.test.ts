@@ -53,6 +53,10 @@ test('discoveries and endings ring out', () => {
   expect(ids(direct(snap(), snap({ lost: true })))).toContain('defeat')
 })
 
+test('coming home to Spain rings out', () => {
+  expect(ids(direct(snap({ sailing: true }), snap({ screen: 'spain', sailing: true })))).toContain('home')
+})
+
 test('walk-in entry cues, and explicit events pass through', () => {
   expect(ids(direct(snap(), snap({ screen: 'walkin' })))).toContain('walkin-enter')
   expect(ids(direct(snap(), snap(), ['trade']))).toContain('trade')

@@ -14,6 +14,7 @@ export type CueId =
   | 'landfall'
   | 'storm-enter'
   | 'walkin-enter'
+  | 'home'
   | 'driven-off'
   | 'amb-sea'
   | 'amb-storm'
@@ -61,6 +62,7 @@ export function direct(prev: AudioSnapshot, next: AudioSnapshot, events: GameEve
     cues.push({ id: 'landfall' })
   if (next.sailing && !prev.inStorm && next.inStorm) cues.push({ id: 'storm-enter' })
   if (prev.screen !== 'walkin' && next.screen === 'walkin') cues.push({ id: 'walkin-enter' })
+  if (prev.screen !== 'spain' && next.screen === 'spain') cues.push({ id: 'home' })
   if (next.citiesFound > prev.citiesFound) cues.push({ id: 'city-found' })
   if (!prev.won && next.won) cues.push({ id: 'victory' })
   if (!prev.lost && next.lost) cues.push({ id: 'defeat' })

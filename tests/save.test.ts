@@ -26,6 +26,7 @@ test('save round-trips the full expedition', () => {
     explorer: { x: 50.5, y: 60.25 },
     ship: { x: 48.5, y: 61.5 },
     sailing: true,
+    career: { banked: 2500, voyages: 2 },
     fogSeen: fog.seen,
     villages,
   })
@@ -36,6 +37,7 @@ test('save round-trips the full expedition', () => {
   expect(back.explorer).toEqual({ x: 50.5, y: 60.25 })
   expect(back.ship).toEqual({ x: 48.5, y: 61.5 })
   expect(back.sailing).toBe(true)
+  expect(back.career).toEqual({ banked: 2500, voyages: 2 })
   expect(Array.from(unpackBits(back.fogSeenB64, fog.seen.length))).toEqual(Array.from(fog.seen))
   expect(back.villages).toEqual(villages)
 })
@@ -43,11 +45,12 @@ test('save round-trips the full expedition', () => {
 test('garbage and wrong versions are rejected', () => {
   expect(deserializeSave('not json {{{')).toBeNull()
   expect(deserializeSave('{"version": 99}')).toBeNull()
-  expect(deserializeSave('{"version": 4}')).toBeNull() // missing fields
+  expect(deserializeSave('{"version": 5}')).toBeNull() // missing fields
   expect(deserializeSave('null')).toBeNull()
   // pre-river saves (v1/v2) reference maps that no longer generate the same;
   // both are rejected cleanly
   expect(deserializeSave('{"version": 1, "seedStr": "x", "fogSeenB64": ""}')).toBeNull()
   expect(deserializeSave('{"version": 2, "seedStr": "x", "fogSeenB64": ""}')).toBeNull()
   expect(deserializeSave('{"version": 3, "seedStr": "x", "fogSeenB64": ""}')).toBeNull()
+  expect(deserializeSave('{"version": 4, "seedStr": "x", "fogSeenB64": ""}')).toBeNull()
 })

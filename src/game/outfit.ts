@@ -32,15 +32,15 @@ export function outfitCost(o: Outfit): number {
   return o.food * PRICES.food + o.goods * PRICES.goods + o.crew * PRICES.crew
 }
 
-export function remainingBudget(o: Outfit): number {
-  return BUDGET - outfitCost(o)
+export function remainingBudget(o: Outfit, budget = BUDGET): number {
+  return budget - outfitCost(o)
 }
 
 /** Returns the adjusted outfit, or the original unchanged if the change would
  *  bust a limit or the budget. */
-export function adjustOutfit(o: Outfit, field: keyof Outfit, dir: 1 | -1): Outfit {
+export function adjustOutfit(o: Outfit, field: keyof Outfit, dir: 1 | -1, budget = BUDGET): Outfit {
   const [lo, hi] = LIMITS[field]
   const value = Math.max(lo, Math.min(hi, o[field] + dir * STEPS[field]))
   const next = { ...o, [field]: value }
-  return outfitCost(next) <= BUDGET ? next : o
+  return outfitCost(next) <= budget ? next : o
 }

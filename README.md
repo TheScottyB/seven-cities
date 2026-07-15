@@ -43,6 +43,10 @@ npm run dev      # open the printed localhost URL
 - **Explore** a real-time, smooth-scrolling tile map. Fog of war lifts as you travel and
   the territory you've charted stays on your map (and minimap, where discovered villages
   appear as dots — gold for Cities of Gold).
+- **A career, not one voyage:** sail west for the open Atlantic and press `E` to return to
+  Spain. Your gold is banked with the Crown, ranks are conferred (Captain, Commodore,
+  Governor, Admiral, Viceroy), and each rank raises the budget for your next voyage — to
+  the same New World, with your map, your discoveries, and your reputation intact.
 - **Walk among the people:** reaching a village puts you on foot inside it. Cross the
   village to the chief to open the parley — but if word of your violence has spread, the
   people close in and drive you out.

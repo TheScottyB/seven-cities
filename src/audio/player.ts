@@ -111,6 +111,11 @@ export function synthesize(ctx: BaseAudioContext, dest: AudioNode, id: CueId, at
       noiseBurst(ctx, dest, at, 1.2, 0.7, 500, 2)
       noiseBurst(ctx, dest, at + 0.2, 1.0, 0.5, 1200, 2)
       break
+    case 'home': // warm major chord — the harbor of Palos again
+      tone(ctx, dest, 'sine', 392, at, 0.8, 0.25)
+      tone(ctx, dest, 'sine', 494, at + 0.05, 0.8, 0.22)
+      tone(ctx, dest, 'sine', 587, at + 0.1, 0.9, 0.22)
+      break
     case 'walkin-enter': // low wooden knock — you step among the huts
       tone(ctx, dest, 'sine', 180, at, 0.12, 0.4)
       tone(ctx, dest, 'sine', 140, at + 0.1, 0.15, 0.4)

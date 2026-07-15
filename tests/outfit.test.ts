@@ -43,6 +43,18 @@ test('cannot spend past the budget', () => {
   expect(outfitCost(o)).toBeLessThanOrEqual(BUDGET)
 })
 
+test('a richer budget lets the outfit grow past the base cap', () => {
+  let base = { food: 0, goods: 0, crew: 10 }
+  let rich = { food: 0, goods: 0, crew: 10 }
+  for (let i = 0; i < 300; i++) {
+    base = adjustOutfit(adjustOutfit(base, 'goods', 1), 'food', 1)
+    rich = adjustOutfit(adjustOutfit(rich, 'goods', 1, 900), 'food', 1, 900)
+  }
+  expect(outfitCost(base)).toBeLessThanOrEqual(500)
+  expect(outfitCost(rich)).toBeGreaterThan(outfitCost(base))
+  expect(outfitCost(rich)).toBeLessThanOrEqual(900)
+})
+
 test('rejected adjustment returns the outfit unchanged', () => {
   // spend the whole budget on goods, then try to add more
   let o = { food: 0, goods: 0, crew: 10 }

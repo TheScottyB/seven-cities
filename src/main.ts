@@ -7,6 +7,7 @@ import { findMooring, moveShip, landingSpots, type Ship } from './game/ship'
 import { makeWeather, windAt, windFactor, stormAt, applyStorm, type Weather } from './game/weather'
 import { discoverVillage, resolveTrade, resolveGift, resolveAttack, effectiveTemperament } from './game/encounter'
 import { makeScene, tickScene, type WalkinScene } from './game/walkin'
+import { makeCareer, bankGold, budgetFor, rankIndex, type Career } from './game/career'
 import { direct, ambienceFor, type AudioSnapshot, type GameEvent } from './audio/director'
 import { AudioPlayer, synthesize } from './audio/player'
 import { drawWalkin } from './ui/walkin'
@@ -24,7 +25,7 @@ import { centerCamera, type Camera } from './engine/camera'
 import { startLoop } from './engine/loop'
 import { renderWorld, renderMinimap, renderStorms, type RenderCtx } from './engine/renderer'
 import { drawHud, drawWindIndicator } from './ui/hud'
-import { drawStartScreen, drawOutfitScreen, drawEncounter, drawGameOver, drawResult } from './ui/panels'
+import { drawStartScreen, drawOutfitScreen, drawSpainScreen, drawEncounter, drawGameOver, drawResult } from './ui/panels'
 import { seedFromString } from './world/rng'
 
 const REVEAL_RADIUS = 7
@@ -36,7 +37,7 @@ const AUTOSAVE_EVERY = 5 // seconds
 const SAVE_KEY = 'seven-cities-save'
 const CHRONICLE_KEY = 'seven-cities-chronicle'
 
-type Screen = 'start' | 'outfit' | 'playing' | 'walkin' | 'over'
+type Screen = 'start' | 'outfit' | 'playing' | 'walkin' | 'spain' | 'over'
 
 const canvas = document.getElementById('game') as HTMLCanvasElement
 const ctx = canvas.getContext('2d')!
@@ -73,6 +74,10 @@ let autosaveIn = AUTOSAVE_EVERY
 let timeScale = 1 // dev hook can raise this for fast playtests
 let walkin: WalkinScene | null = null
 let walkinVillage: Village | null = null
+let career: Career = makeCareer()
+let nextVoyage = false // outfit screen: fresh career vs. re-outfitting in Spain
+let justBanked = 0
+let promoted = false
 const player = new AudioPlayer()
 let audioEvents: GameEvent[] = []
 let prevSnap: AudioSnapshot | null = null
@@ -119,13 +124,34 @@ function newWorld(seedStr: string): World {
 
 function embark() {
   world = newWorld(world.seedStr)
+  applyOutfit()
+  screen = 'playing'
+}
+
+/** A later voyage: the same New World, a fresh expedition off the same coast. */
+function embarkVoyage() {
+  const { map } = world
+  world.explorer.x = map.landing.x + 0.5
+  world.explorer.y = map.landing.y + 0.5
+  const mooring = findMooring(map)
+  world.ship.x = mooring.x
+  world.ship.y = mooring.y
+  world.sailing = false
+  world.state.morale = 100 // a fresh crew signs on
+  applyOutfit()
+  reveal(world.fog, Math.floor(world.explorer.x), Math.floor(world.explorer.y), REVEAL_RADIUS)
+  screen = 'playing'
+}
+
+function applyOutfit() {
   world.state.food = outfit.food
   world.state.goods = outfit.goods
   world.state.crew = outfit.crew
-  world.state.gold = remainingBudget(outfit)
+  world.state.gold = remainingBudget(outfit, budgetFor(career.banked))
   encounter = null
+  walkin = null
   flash = { text: '', t: 0 } // no toast carried over from a previous run
-  screen = 'playing'
+  saveGame()
 }
 
 // --- save / load ---------------------------------------------------------
@@ -141,6 +167,7 @@ function saveGame() {
         explorer: { x: world.explorer.x, y: world.explorer.y },
         ship: { x: world.ship.x, y: world.ship.y },
         sailing: world.sailing,
+        career,
         fogSeen: world.fog.seen,
         villages: world.villages,
       }),
@@ -172,8 +199,8 @@ function recordExpedition() {
   const entry: ChronicleEntry = {
     seedStr: world.seedStr,
     won: s.status === GameStatus.Won,
-    score: score(s, world.fog.revealedCount),
-    gold: Math.floor(s.gold),
+    score: score(s, world.fog.revealedCount) + career.banked,
+    gold: Math.floor(s.gold) + career.banked,
     day: s.day,
     cities: s.citiesFound,
   }
@@ -199,6 +226,7 @@ function restoreWorld(save: SaveData): World {
   w.explorer.y = save.explorer.y
   w.ship = { ...save.ship }
   w.sailing = save.sailing
+  career = { ...save.career }
   w.fog.seen = unpackBits(save.fogSeenB64, w.fog.seen.length)
   w.fog.revealedCount = w.fog.seen.reduce((a, b) => a + b, 0)
   // the map (and thus village placement) regenerates identically from the
@@ -259,6 +287,8 @@ function update(dt: number) {
     if (input.pressed('enter')) {
       outfit = defaultOutfit()
       outfitRow = 0
+      career = makeCareer()
+      nextVoyage = false
       screen = 'outfit'
     } else if (input.pressed('c')) {
       const save = loadSave()
@@ -277,10 +307,26 @@ function update(dt: number) {
     const fields: (keyof Outfit)[] = ['food', 'goods', 'crew']
     if (input.pressed('up')) outfitRow = (outfitRow + fields.length - 1) % fields.length
     if (input.pressed('down')) outfitRow = (outfitRow + 1) % fields.length
-    if (input.pressed('left')) outfit = adjustOutfit(outfit, fields[outfitRow], -1)
-    if (input.pressed('right')) outfit = adjustOutfit(outfit, fields[outfitRow], 1)
-    if (input.pressed('enter')) embark()
-    if (input.pressed('esc')) screen = 'start'
+    const budget = budgetFor(career.banked)
+    if (input.pressed('left')) outfit = adjustOutfit(outfit, fields[outfitRow], -1, budget)
+    if (input.pressed('right')) outfit = adjustOutfit(outfit, fields[outfitRow], 1, budget)
+    if (input.pressed('enter')) {
+      if (nextVoyage) embarkVoyage()
+      else embark()
+    }
+    if (input.pressed('esc') && !nextVoyage) screen = 'start'
+    input.endFrame()
+    pumpAudio()
+    return
+  }
+
+  if (screen === 'spain') {
+    if (input.pressed('enter')) {
+      outfit = defaultOutfit()
+      outfitRow = 0
+      nextVoyage = true
+      screen = 'outfit'
+    }
     input.endFrame()
     pumpAudio()
     return
@@ -335,7 +381,16 @@ function update(dt: number) {
     tick(state, sdt)
 
     if (input.pressed('action')) {
-      if (world.sailing) {
+      if (world.sailing && explorer.x < 4) {
+        // set course for Spain: bank the gold, count the voyage
+        const before = rankIndex(career.banked)
+        justBanked = Math.floor(state.gold)
+        career = bankGold(career, state.gold)
+        state.gold = 0
+        promoted = rankIndex(career.banked) > before
+        screen = 'spain'
+        saveGame()
+      } else if (world.sailing) {
         const spots = landingSpots(map, explorer.x, explorer.y)
         if (spots.length) {
           // step ashore; the ship stays moored where we left it
@@ -440,7 +495,11 @@ function render() {
     return
   }
   if (screen === 'outfit') {
-    drawOutfitScreen(ctx, canvas.width, canvas.height, outfit, outfitRow)
+    drawOutfitScreen(ctx, canvas.width, canvas.height, outfit, outfitRow, budgetFor(career.banked))
+    return
+  }
+  if (screen === 'spain') {
+    drawSpainScreen(ctx, canvas.width, canvas.height, career, world.state, justBanked, promoted)
     return
   }
   if (screen === 'walkin' && walkin && walkinVillage) {
@@ -468,7 +527,10 @@ function render() {
     let text = ''
     let color = '#e8e8ee'
     if (world.sailing) {
-      if (landingSpots(world.map, world.explorer.x, world.explorer.y).length) {
+      if (world.explorer.x < 4) {
+        text = 'Press E to sail home to Spain'
+        color = '#f4c430'
+      } else if (landingSpots(world.map, world.explorer.x, world.explorer.y).length) {
         text = 'Press E to make landfall'
       }
     } else {
@@ -496,7 +558,7 @@ function render() {
 
   if (screen === 'over') {
     const won = world.state.status === GameStatus.Won
-    drawGameOver(ctx, canvas.width, canvas.height, won, score(world.state, world.fog.revealedCount))
+    drawGameOver(ctx, canvas.width, canvas.height, won, score(world.state, world.fog.revealedCount) + career.banked)
   }
 }
 
@@ -516,6 +578,7 @@ if (import.meta.env.DEV) {
       render() // keep the canvas current even when rAF is throttled
     },
     walkin: () => walkin,
+    career: () => career,
     audioLog: () => player.getLog(),
     renderCue: async (id: string) => {
       const off = new OfflineAudioContext(1, 2 * 44100, 44100)

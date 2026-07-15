@@ -2,6 +2,8 @@ import type { Village } from '../world/villages'
 import { Outfit, outfitCost, remainingBudget, PRICES, BUDGET } from '../game/outfit'
 import { TRADE_GOODS, GIFT_GOODS, effectiveTemperament } from '../game/encounter'
 import { bestScore, type ChronicleEntry } from '../game/chronicle'
+import { rankTitle, rankIndex, budgetFor, RANKS, type Career } from '../game/career'
+import type { GameState } from '../game/state'
 
 function panel(ctx: CanvasRenderingContext2D, viewW: number, viewH: number, w: number, h: number) {
   const x = (viewW - w) / 2
@@ -29,6 +31,7 @@ export function drawOutfitScreen(
   viewH: number,
   outfit: Outfit,
   selectedRow: number,
+  budget = BUDGET,
 ): void {
   ctx.fillStyle = '#0a0a12'
   ctx.fillRect(0, 0, viewW, viewH)
@@ -36,7 +39,7 @@ export function drawOutfitScreen(
   center(ctx, 'OUTFIT YOUR EXPEDITION', cx, viewH / 2 - 150, "bold 32px 'Courier New', monospace", '#f4c430')
   center(
     ctx,
-    `The Crown grants you ${BUDGET} gold. Spend it well — what remains sails with you.`,
+    `The Crown grants you ${budget} gold. Spend it well — what remains sails with you.`,
     cx,
     viewH / 2 - 112,
     "15px 'Courier New', monospace",
@@ -65,7 +68,7 @@ export function drawOutfitScreen(
 
   center(
     ctx,
-    `Spent: ${outfitCost(outfit)}    Sails as gold: ${remainingBudget(outfit)}`,
+    `Spent: ${outfitCost(outfit)}    Sails as gold: ${remainingBudget(outfit, budget)}`,
     cx,
     y + 8,
     "17px 'Courier New', monospace",
@@ -121,6 +124,51 @@ export function drawStartScreen(
       y += 21
     }
   }
+}
+
+export function drawSpainScreen(
+  ctx: CanvasRenderingContext2D,
+  viewW: number,
+  viewH: number,
+  career: Career,
+  state: GameState,
+  justBanked: number,
+  promoted: boolean,
+): void {
+  ctx.fillStyle = '#0a0a12'
+  ctx.fillRect(0, 0, viewW, viewH)
+  const cx = viewW / 2
+  const title = rankTitle(career.banked)
+  center(ctx, 'SPAIN — THE COURT OF THE CROWN', cx, viewH / 2 - 150, "bold 32px 'Courier New', monospace", '#f4c430')
+  center(
+    ctx,
+    `Voyage ${career.voyages} complete. You banked ${justBanked} gold with the Crown.`,
+    cx,
+    viewH / 2 - 108,
+    "16px 'Courier New', monospace",
+    '#e0d18a',
+  )
+  if (promoted) {
+    center(ctx, `The Crown elevates you: ${title.toUpperCase()}!`, cx, viewH / 2 - 74, "bold 20px 'Courier New', monospace", '#7fd17f')
+  } else {
+    center(ctx, `Your rank: ${title}`, cx, viewH / 2 - 74, "18px 'Courier New', monospace", '#c9c9d2')
+  }
+  const idx = rankIndex(career.banked)
+  const next = idx < RANKS.length - 1 ? RANKS[idx + 1] : null
+  const lines = [
+    `Treasury: ${career.banked} gold banked`,
+    `Cities of Gold found: ${state.citiesFound}/7    Villages contacted: ${state.villagesContacted}`,
+    `Word of your deeds — fear among the peoples: ${Math.floor(state.fear)}`,
+    next ? `Next title (${next.title}) at ${next.min} gold banked` : 'No higher title remains',
+    '',
+    `The Crown will fund your next voyage: ${budgetFor(career.banked)} gold`,
+  ]
+  let y = viewH / 2 - 30
+  for (const l of lines) {
+    center(ctx, l, cx, y, "15px 'Courier New', monospace", '#9a9aa6')
+    y += 26
+  }
+  center(ctx, 'Press ENTER to outfit your next voyage', cx, y + 22, "16px 'Courier New', monospace", '#7fd17f')
 }
 
 export function drawEncounter(
