@@ -15,6 +15,7 @@ export type CueId =
   | 'storm-enter'
   | 'walkin-enter'
   | 'home'
+  | 'low-food'
   | 'driven-off'
   | 'amb-sea'
   | 'amb-storm'
@@ -28,10 +29,11 @@ export interface AudioCue {
 }
 
 export interface AudioSnapshot {
-  screen: string // 'start' | 'outfit' | 'playing' | 'walkin' | 'over'
+  screen: string // 'start' | 'outfit' | 'playing' | 'walkin' | 'spain' | 'over'
   sailing: boolean
   inStorm: boolean
   onRiver: boolean
+  lowFood: boolean
   citiesFound: number
   won: boolean
   lost: boolean
@@ -63,6 +65,8 @@ export function direct(prev: AudioSnapshot, next: AudioSnapshot, events: GameEve
   if (next.sailing && !prev.inStorm && next.inStorm) cues.push({ id: 'storm-enter' })
   if (prev.screen !== 'walkin' && next.screen === 'walkin') cues.push({ id: 'walkin-enter' })
   if (prev.screen !== 'spain' && next.screen === 'spain') cues.push({ id: 'home' })
+  // the larder bell: rings when provisions first run low, re-arms on recovery
+  if (!prev.lowFood && next.lowFood) cues.push({ id: 'low-food' })
   if (next.citiesFound > prev.citiesFound) cues.push({ id: 'city-found' })
   if (!prev.won && next.won) cues.push({ id: 'victory' })
   if (!prev.lost && next.lost) cues.push({ id: 'defeat' })

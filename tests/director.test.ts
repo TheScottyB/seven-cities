@@ -6,6 +6,7 @@ function snap(over: Partial<AudioSnapshot> = {}): AudioSnapshot {
     sailing: false,
     inStorm: false,
     onRiver: false,
+    lowFood: false,
     citiesFound: 0,
     won: false,
     lost: false,
@@ -51,6 +52,15 @@ test('discoveries and endings ring out', () => {
   expect(ids(direct(snap(), snap({ citiesFound: 1 })))).toContain('city-found')
   expect(ids(direct(snap(), snap({ won: true })))).toContain('victory')
   expect(ids(direct(snap(), snap({ lost: true })))).toContain('defeat')
+})
+
+test('the larder bell rings once when food runs low, re-arms on recovery', () => {
+  const fed = snap()
+  const hungry = snap({ lowFood: true })
+  expect(ids(direct(fed, hungry))).toContain('low-food')
+  expect(ids(direct(hungry, hungry))).not.toContain('low-food')
+  expect(ids(direct(hungry, fed))).not.toContain('low-food')
+  expect(ids(direct(fed, hungry))).toContain('low-food') // recovered, dropped again
 })
 
 test('coming home to Spain rings out', () => {

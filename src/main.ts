@@ -96,6 +96,7 @@ function snapshot(): AudioSnapshot {
       world.sailing &&
       stormAt(world.weather, world.state.elapsed, world.map.width, world.map.height, world.explorer.x, world.explorer.y),
     onRiver: !world.sailing && underfoot === 8,
+    lowFood: world.state.food < 80 && world.state.status === GameStatus.Playing,
     citiesFound: world.state.citiesFound,
     won: world.state.status === GameStatus.Won,
     lost: world.state.status === GameStatus.Lost,

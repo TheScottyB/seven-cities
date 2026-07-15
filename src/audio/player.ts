@@ -116,6 +116,10 @@ export function synthesize(ctx: BaseAudioContext, dest: AudioNode, id: CueId, at
       tone(ctx, dest, 'sine', 494, at + 0.05, 0.8, 0.22)
       tone(ctx, dest, 'sine', 587, at + 0.1, 0.9, 0.22)
       break
+    case 'low-food': // the larder bell: two ominous low pulses
+      tone(ctx, dest, 'sine', 110, at, 0.35, 0.7)
+      tone(ctx, dest, 'sine', 104, at + 0.45, 0.5, 0.7)
+      break
     case 'walkin-enter': // low wooden knock — you step among the huts
       tone(ctx, dest, 'sine', 180, at, 0.12, 0.4)
       tone(ctx, dest, 'sine', 140, at + 0.1, 0.15, 0.4)
