@@ -3,7 +3,7 @@ import { Outfit, outfitCost, remainingBudget, PRICES, BUDGET } from '../game/out
 import { TRADE_GOODS, GIFT_GOODS, effectiveTemperament } from '../game/encounter'
 import { bestScore, type ChronicleEntry } from '../game/chronicle'
 import { rankTitle, rankIndex, budgetFor, RANKS, type Career } from '../game/career'
-import type { GameState } from '../game/state'
+import { dailyAppetite, type GameState } from '../game/state'
 
 function panel(ctx: CanvasRenderingContext2D, viewW: number, viewH: number, w: number, h: number) {
   const x = (viewW - w) / 2
@@ -75,7 +75,17 @@ export function drawOutfitScreen(
     "17px 'Courier New', monospace",
     '#e0d18a',
   )
-  center(ctx, '↑↓ choose   ←→ adjust   ENTER set sail', cx, y + 48, "15px 'Courier New', monospace", '#7fd17f')
+  const perDay = dailyAppetite(outfit.crew)
+  const days = perDay > 0 ? outfit.food / perDay : 0
+  center(
+    ctx,
+    `A crew of ${outfit.crew} eats ~${Math.round(perDay)} provisions a day — this larder lasts ~${days.toFixed(1)} days`,
+    cx,
+    y + 34,
+    "14px 'Courier New', monospace",
+    days < 5 ? '#c0504d' : '#7a9a7a',
+  )
+  center(ctx, '↑↓ choose   ←→ adjust   ENTER set sail', cx, y + 62, "15px 'Courier New', monospace", '#7fd17f')
 }
 
 export function drawStartScreen(
@@ -98,9 +108,10 @@ export function drawStartScreen(
     'Manage your food, crew, and morale. Discover all seven',
     'fabled Cities of Gold before your expedition falls apart.',
     '',
-    'MOVE  W A S D    INTERACT  E    FORT  F    CHOOSE  1 2 3    SOUND  M    MENU  Esc',
+    'MOVE  W A S D / arrows      INTERACT  E / Space      CHOOSE  1 2 3',
+    'FORT  F      SOUND  M      MENU  Esc',
     '',
-    `Seed: ${seed}`,
+    `Seed: ${seed}   (R rolls a new world)`,
     '',
     'Press ENTER to outfit a new expedition',
   ]

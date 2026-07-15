@@ -21,6 +21,11 @@ export interface GameState {
 
 const SECONDS_PER_DAY = 20
 
+/** provisions a crew of this size eats per game day — the outfitter's arithmetic */
+export function dailyAppetite(crew: number): number {
+  return (0.2 + crew * 0.04) * SECONDS_PER_DAY
+}
+
 export function makeState(init: Partial<GameState> = {}): GameState {
   return {
     food: 420,
@@ -44,8 +49,8 @@ export function tick(s: GameState, dt: number): void {
   s.day = 1 + Math.floor(s.elapsed / SECONDS_PER_DAY)
 
   // famine bites: a base camp cost plus a per-man share —
-  // ~24 food per day for a 25-man expedition
-  const eaten = dt * (0.2 + s.crew * 0.04)
+  // ~24 food per day for a 25-man expedition (see dailyAppetite)
+  const eaten = (dt * dailyAppetite(s.crew)) / 20
   s.food = Math.max(0, s.food - eaten)
   if (s.food <= 0) {
     s.crew = Math.max(0, s.crew - dt * 2)

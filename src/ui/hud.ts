@@ -56,9 +56,11 @@ export function drawHud(ctx: CanvasRenderingContext2D, viewW: number, s: GameSta
   ctx.font = FONT
   ctx.textBaseline = 'middle'
 
+  const foodColor = s.food < 80 ? '#c0504d' : s.food < 150 ? '#e0b34f' : '#7fd17f'
+  const goodsColor = s.goods < 25 ? '#c0504d' : '#d8925c'
   const items: [string, string, string][] = [
-    ['Food', Math.floor(s.food).toString(), '#7fd17f'],
-    ['Goods', Math.floor(s.goods).toString(), '#d8925c'],
+    ['Food', Math.floor(s.food).toString(), foodColor],
+    ['Goods', Math.floor(s.goods).toString(), goodsColor],
     ['Crew', Math.floor(s.crew).toString(), '#e0d18a'],
     ['Gold', Math.floor(s.gold).toString(), '#f4c430'],
   ]

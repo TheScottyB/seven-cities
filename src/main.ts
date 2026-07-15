@@ -331,6 +331,9 @@ function update(dt: number) {
         encounter = null
         screen = 'playing'
       }
+    } else if (input.pressed('r')) {
+      // roll a new world to explore
+      world = newWorld(String(1 + (Math.floor(performance.now() * 7) % 99999)))
     }
     input.endFrame()
     pumpAudio()
@@ -623,6 +626,14 @@ function render() {
       ctx.fillText(text, canvas.width / 2, canvas.height - 34)
       ctx.textAlign = 'left'
     }
+  }
+
+  // quiet key reference in the corner
+  if (screen === 'playing' && !encounter) {
+    ctx.font = "12px 'Courier New', monospace"
+    ctx.fillStyle = 'rgba(154,154,166,0.55)'
+    ctx.textAlign = 'left'
+    ctx.fillText('E interact · F fort · M sound · Esc menu', 12, canvas.height - 12)
   }
 
   if (flash.t > 0 && screen === 'playing') drawResult(ctx, canvas.width, canvas.height, flash.text)
