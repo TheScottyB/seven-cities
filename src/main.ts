@@ -338,7 +338,7 @@ function update(dt: number) {
   }
 
   if (screen === 'outfit') {
-    const fields: (keyof Outfit)[] = ['food', 'goods', 'crew']
+    const fields: (keyof Outfit)[] = ['food', 'goods', 'crew', 'ships']
     if (input.pressed('up')) outfitRow = (outfitRow + fields.length - 1) % fields.length
     if (input.pressed('down')) outfitRow = (outfitRow + 1) % fields.length
     const budget = budgetFor(career.banked)
