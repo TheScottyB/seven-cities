@@ -1,6 +1,6 @@
 import type { Village } from '../world/villages'
 import { Outfit, outfitCost, remainingBudget, PRICES, BUDGET } from '../game/outfit'
-import { TRADE_GOODS, GIFT_GOODS } from '../game/encounter'
+import { TRADE_GOODS, GIFT_GOODS, effectiveTemperament } from '../game/encounter'
 import { bestScore, type ChronicleEntry } from '../game/chronicle'
 
 function panel(ctx: CanvasRenderingContext2D, viewW: number, viewH: number, w: number, h: number) {
@@ -129,13 +129,15 @@ export function drawEncounter(
   viewH: number,
   v: Village,
   goods: number,
+  fear = 0,
 ): void {
   const { x, y } = panel(ctx, viewW, viewH, 580, 268)
   const cx = viewW / 2
   const title = v.golden ? 'A CITY OF GOLD!' : 'A native village'
   center(ctx, title, cx, y + 44, "bold 26px 'Courier New', monospace", v.golden ? '#f4c430' : '#e0d18a')
 
-  const mood = v.temperament > 0.66 ? 'friendly' : v.temperament > 0.33 ? 'wary' : 'hostile'
+  const eff = effectiveTemperament(v.temperament, fear)
+  const mood = eff > 0.66 ? 'friendly' : eff > 0.33 ? 'wary' : 'hostile'
   center(
     ctx,
     `They appear ${mood}. (pop. ~${v.population})   Your goods: ${Math.floor(goods)}`,

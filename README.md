@@ -21,7 +21,8 @@ npm run dev      # open the printed localhost URL
 | `W A S D` / arrows | Move (real-time) |
 | `E` / `Space` | Approach a village · board your ship · make landfall |
 | `1` / `2` / `3` | Trade / Gift / Attack |
-| `Esc` | Walk away from a village · save & return to menu |
+| `Esc` | Leave a village or parley · save & return to menu |
+| `M` | Mute / unmute sound |
 | `Enter` | Outfit a new expedition / set sail |
 | `C` | Continue your saved expedition (title screen) |
 | `↑↓ ←→` | Choose and adjust line items (outfitting screen) |
@@ -42,6 +43,11 @@ npm run dev      # open the printed localhost URL
 - **Explore** a real-time, smooth-scrolling tile map. Fog of war lifts as you travel and
   the territory you've charted stays on your map (and minimap, where discovered villages
   appear as dots — gold for Cities of Gold).
+- **Walk among the people:** reaching a village puts you on foot inside it. Cross the
+  village to the chief to open the parley — but if word of your violence has spread, the
+  people close in and drive you out.
+- **Reputation travels:** every attack spreads fear across the whole New World, souring
+  every future village's welcome and trade rates. Gifts slowly redeem your name.
 - **Villages** each have a hidden temperament and wealth:
   - **Trade** — goods for gold and provisions; rates are better with friendly villages.
   - **Gift** — spend goods for goodwill, morale, and *rumors* that chart the land around

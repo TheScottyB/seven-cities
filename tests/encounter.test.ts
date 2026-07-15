@@ -1,5 +1,5 @@
 import { makeState } from '../src/game/state'
-import { discoverVillage, resolveTrade, resolveGift, resolveAttack } from '../src/game/encounter'
+import { discoverVillage, resolveTrade, resolveGift, resolveAttack, effectiveTemperament } from '../src/game/encounter'
 import type { Village } from '../src/world/villages'
 
 function village(over: Partial<Village> = {}): Village {
@@ -88,6 +88,32 @@ test('attack needs no goods, can cost crew, seizes all gold', () => {
   expect(s.crew).toBeLessThan(100)
   expect(s.gold).toBe(300)
   expect(v.depleted).toBe(true)
+})
+
+test('attack spreads fear across the world; gifts slowly redeem it', () => {
+  const s = makeState()
+  resolveAttack(s, village({ population: 200 }), () => 0.5)
+  expect(s.fear).toBeGreaterThan(0)
+  const afterAttack = s.fear
+  resolveGift(s, village())
+  expect(s.fear).toBeLessThan(afterAttack)
+})
+
+test('fear poisons trade rates everywhere', () => {
+  const calm = makeState({ fear: 0 })
+  const feared = makeState({ fear: 80 })
+  const v1 = village({ temperament: 0.8, wealth: 200 })
+  const v2 = village({ temperament: 0.8, wealth: 200 })
+  resolveTrade(calm, v1, () => 0.5)
+  resolveTrade(feared, v2, () => 0.5)
+  expect(feared.gold).toBeLessThan(calm.gold)
+})
+
+test('effectiveTemperament drops with fear, clamped to [0,1]', () => {
+  expect(effectiveTemperament(0.8, 0)).toBeCloseTo(0.8)
+  expect(effectiveTemperament(0.8, 50)).toBeLessThan(0.8)
+  expect(effectiveTemperament(0.1, 100)).toBe(0)
+  expect(effectiveTemperament(1, 0)).toBe(1)
 })
 
 test('depleted village cannot be re-traded or re-attacked', () => {

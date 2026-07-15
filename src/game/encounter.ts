@@ -10,6 +10,14 @@ export const GIFT_GOODS = 10
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
 /**
+ * Word travels. A village's willingness to deal is its own temperament
+ * dragged down by how feared the expedition has become everywhere.
+ */
+export function effectiveTemperament(temperament: number, fear: number): number {
+  return clamp(temperament - (fear / 100) * 0.6, 0, 1)
+}
+
+/**
  * Called when the player first reaches a village (the encounter panel opens).
  * Discovery — including counting a City of Gold — happens on arrival, not on
  * how the meeting goes, and only ever once per village.
@@ -25,7 +33,7 @@ export function resolveTrade(s: GameState, v: Village, roll: Roll = Math.random)
   if (v.depleted || s.goods <= 0) return
   const spent = Math.min(TRADE_GOODS, s.goods)
   const strength = spent / TRADE_GOODS // trading with a thin pack earns less
-  const rate = 0.3 + v.temperament * 0.7
+  const rate = 0.3 + effectiveTemperament(v.temperament, s.fear) * 0.7
   const gold = Math.floor(v.wealth * rate * (0.6 + roll() * 0.4) * strength)
   s.goods -= spent
   s.gold += gold
@@ -42,6 +50,7 @@ export function resolveGift(s: GameState, v: Village): void {
   s.goods -= spent
   v.temperament = clamp(v.temperament + 0.25 * (spent / GIFT_GOODS), 0, 1)
   s.morale = clamp(s.morale + 6, 0, 100)
+  s.fear = clamp(s.fear - 2, 0, 100) // kindness is news too, but it travels slowly
   // a gift does not deplete the village — it can still be traded with later
 }
 
@@ -52,5 +61,7 @@ export function resolveAttack(s: GameState, v: Village, roll: Roll = Math.random
   s.crew = clamp(s.crew - losses, 0, 100)
   s.gold += v.wealth
   s.morale = clamp(s.morale - 8, 0, 100)
+  // massacres echo across the whole New World
+  s.fear = clamp(s.fear + 10 + Math.floor(v.population / 40), 0, 100)
   v.depleted = true
 }

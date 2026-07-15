@@ -57,6 +57,7 @@ export function drawHud(ctx: CanvasRenderingContext2D, viewW: number, s: GameSta
     ['Crew', Math.floor(s.crew).toString(), '#e0d18a'],
     ['Gold', Math.floor(s.gold).toString(), '#f4c430'],
     ['Morale', Math.floor(s.morale).toString(), '#7fb0ff'],
+    ['Fear', Math.floor(s.fear).toString(), s.fear > 40 ? '#c0504d' : '#8a8a94'],
     ['Day', s.day.toString(), '#cccccc'],
     ['Cities', `${s.citiesFound}/7`, '#f4c430'],
   ]

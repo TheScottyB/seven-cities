@@ -10,6 +10,8 @@ export interface GameState {
   gold: number
   goods: number
   morale: number
+  /** 0-100: how far word of your violence has spread among the peoples */
+  fear: number
   day: number
   elapsed: number
   citiesFound: number
@@ -27,6 +29,7 @@ export function makeState(init: Partial<GameState> = {}): GameState {
     gold: 0,
     goods: 100,
     morale: 100,
+    fear: 0,
     day: 1,
     elapsed: 0,
     citiesFound: 0,

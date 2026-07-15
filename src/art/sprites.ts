@@ -55,6 +55,52 @@ export function drawCanoe(g: CanvasRenderingContext2D, cx: number, cy: number): 
   g.stroke()
 }
 
+/** A villager going about their day — scale is walk-in-scene pixels. */
+export function drawVillager(g: CanvasRenderingContext2D, cx: number, cy: number, sz: number): void {
+  g.fillStyle = '#7a4a2e'
+  g.fillRect(cx - sz * 0.14, cy - sz * 0.1, sz * 0.28, sz * 0.34)
+  g.fillStyle = '#c88a5a'
+  g.beginPath()
+  g.arc(cx, cy - sz * 0.2, sz * 0.13, 0, Math.PI * 2)
+  g.fill()
+  g.fillStyle = '#1c1410'
+  g.fillRect(cx - sz * 0.13, cy - sz * 0.32, sz * 0.26, sz * 0.09)
+}
+
+/** The chief: taller, feathered headdress, gold collar. */
+export function drawChief(g: CanvasRenderingContext2D, cx: number, cy: number, sz: number): void {
+  g.fillStyle = '#8a3a2a'
+  g.fillRect(cx - sz * 0.18, cy - sz * 0.12, sz * 0.36, sz * 0.42)
+  g.fillStyle = '#f4c430'
+  g.fillRect(cx - sz * 0.18, cy - sz * 0.12, sz * 0.36, sz * 0.07)
+  g.fillStyle = '#c88a5a'
+  g.beginPath()
+  g.arc(cx, cy - sz * 0.26, sz * 0.15, 0, Math.PI * 2)
+  g.fill()
+  // headdress feathers
+  for (const [ox, oy, col] of [[-0.2, -0.42, '#c0504d'], [0, -0.5, '#e8e4d8'], [0.2, -0.42, '#3a7ac0']] as const) {
+    g.fillStyle = col
+    g.beginPath()
+    g.ellipse(cx + sz * ox, cy + sz * oy, sz * 0.05, sz * 0.14, ox * 0.8, 0, Math.PI * 2)
+    g.fill()
+  }
+}
+
+/** A single hut for the walk-in scene. */
+export function drawHut(g: CanvasRenderingContext2D, cx: number, cy: number, sz: number): void {
+  g.fillStyle = '#5a3a1e'
+  g.fillRect(cx - sz * 0.4, cy - sz * 0.05, sz * 0.8, sz * 0.42)
+  g.fillStyle = '#7a4a24'
+  g.beginPath()
+  g.moveTo(cx - sz * 0.48, cy - sz * 0.02)
+  g.lineTo(cx, cy - sz * 0.45)
+  g.lineTo(cx + sz * 0.48, cy - sz * 0.02)
+  g.closePath()
+  g.fill()
+  g.fillStyle = '#2a1c10'
+  g.fillRect(cx - sz * 0.1, cy + sz * 0.12, sz * 0.2, sz * 0.25)
+}
+
 /** The expedition's caravel: dark hull, white sail, pennant. */
 export function drawShip(g: CanvasRenderingContext2D, cx: number, cy: number): void {
   const s = TILE_PX

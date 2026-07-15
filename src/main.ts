@@ -5,7 +5,11 @@ import { makeState, tick, score, GameStatus } from './game/state'
 import { makeExplorer, moveExplorer } from './game/explorer'
 import { findMooring, moveShip, landingSpots, type Ship } from './game/ship'
 import { makeWeather, windAt, windFactor, stormAt, applyStorm, type Weather } from './game/weather'
-import { discoverVillage, resolveTrade, resolveGift, resolveAttack } from './game/encounter'
+import { discoverVillage, resolveTrade, resolveGift, resolveAttack, effectiveTemperament } from './game/encounter'
+import { makeScene, tickScene, type WalkinScene } from './game/walkin'
+import { direct, ambienceFor, type AudioSnapshot, type GameEvent } from './audio/director'
+import { AudioPlayer, synthesize } from './audio/player'
+import { drawWalkin } from './ui/walkin'
 import { defaultOutfit, adjustOutfit, remainingBudget, type Outfit } from './game/outfit'
 import { serializeSave, deserializeSave, unpackBits, type SaveData } from './game/save'
 import {
@@ -32,7 +36,7 @@ const AUTOSAVE_EVERY = 5 // seconds
 const SAVE_KEY = 'seven-cities-save'
 const CHRONICLE_KEY = 'seven-cities-chronicle'
 
-type Screen = 'start' | 'outfit' | 'playing' | 'over'
+type Screen = 'start' | 'outfit' | 'playing' | 'walkin' | 'over'
 
 const canvas = document.getElementById('game') as HTMLCanvasElement
 const ctx = canvas.getContext('2d')!
@@ -67,6 +71,36 @@ let encounter: Village | null = null
 let flash = { text: '', t: 0 }
 let autosaveIn = AUTOSAVE_EVERY
 let timeScale = 1 // dev hook can raise this for fast playtests
+let walkin: WalkinScene | null = null
+let walkinVillage: Village | null = null
+const player = new AudioPlayer()
+let audioEvents: GameEvent[] = []
+let prevSnap: AudioSnapshot | null = null
+window.addEventListener('keydown', () => player.unlock())
+
+function snapshot(): AudioSnapshot {
+  const underfoot =
+    world.map.tiles[Math.floor(world.explorer.y) * world.map.width + Math.floor(world.explorer.x)]
+  return {
+    screen,
+    sailing: world.sailing,
+    inStorm:
+      world.sailing &&
+      stormAt(world.weather, world.state.elapsed, world.map.width, world.map.height, world.explorer.x, world.explorer.y),
+    onRiver: !world.sailing && underfoot === 8,
+    citiesFound: world.state.citiesFound,
+    won: world.state.status === GameStatus.Won,
+    lost: world.state.status === GameStatus.Lost,
+  }
+}
+
+function pumpAudio(): void {
+  const snap = snapshot()
+  if (prevSnap) player.play(direct(prevSnap, snap, audioEvents))
+  else player.play([{ id: ambienceFor(snap) }])
+  prevSnap = snap
+  audioEvents = []
+}
 
 function newWorld(seedStr: string): World {
   const seed = seedFromString(seedStr)
@@ -193,6 +227,34 @@ function nearestVillage(): Village | null {
 }
 
 function update(dt: number) {
+  if (input.pressed('m')) {
+    const muted = player.toggleMute()
+    flash = { text: muted ? 'Sound muted (M to unmute)' : 'Sound on', t: 1.5 }
+  }
+
+  if (screen === 'walkin' && walkin && walkinVillage) {
+    const { dx, dy } = input.axis()
+    const status = tickScene(walkin, dx, dy, dt * timeScale)
+    if (input.pressed('esc') || status === 'left') {
+      screen = 'playing'
+      walkin = null
+    } else if (status === 'chief') {
+      encounter = walkinVillage
+      screen = 'playing'
+      walkin = null
+    } else if (status === 'driven-off') {
+      world.state.crew = Math.max(0, world.state.crew - 2)
+      world.state.morale = Math.max(0, world.state.morale - 5)
+      flash = { text: 'The villagers drive you out!', t: 2.5 }
+      audioEvents.push('driven-off')
+      screen = 'playing'
+      walkin = null
+    }
+    input.endFrame()
+    pumpAudio()
+    return
+  }
+
   if (screen === 'start') {
     if (input.pressed('enter')) {
       outfit = defaultOutfit()
@@ -207,6 +269,7 @@ function update(dt: number) {
       }
     }
     input.endFrame()
+    pumpAudio()
     return
   }
 
@@ -219,6 +282,7 @@ function update(dt: number) {
     if (input.pressed('enter')) embark()
     if (input.pressed('esc')) screen = 'start'
     input.endFrame()
+    pumpAudio()
     return
   }
 
@@ -231,6 +295,7 @@ function update(dt: number) {
       screen = 'outfit'
     }
     input.endFrame()
+    pumpAudio()
     return
   }
 
@@ -288,7 +353,9 @@ function update(dt: number) {
           if (firstGolden) {
             flash = { text: `A City of Gold — ${state.citiesFound} of 7 found!`, t: 3 }
           }
-          encounter = v
+          walkin = makeScene(v, state.fear)
+          walkinVillage = v
+          screen = 'walkin'
         } else if (Math.hypot(world.ship.x - explorer.x, world.ship.y - explorer.y) <= BOARD_DIST) {
           world.sailing = true
           explorer.x = world.ship.x
@@ -321,6 +388,7 @@ function update(dt: number) {
 
   centerCamera(world.cam, explorer.x, explorer.y, canvas.width, canvas.height, map.width, map.height)
   input.endFrame()
+  pumpAudio()
 }
 
 function chooseEncounter(action: 'trade' | 'gift' | 'attack') {
@@ -333,6 +401,7 @@ function chooseEncounter(action: 'trade' | 'gift' | 'attack') {
   if (action === 'trade') resolveTrade(state, v)
   else if (action === 'gift') resolveGift(state, v)
   else resolveAttack(state, v)
+  audioEvents.push(action)
 
   if (action === 'gift') {
     if (state.goods < goodsBefore) {
@@ -374,6 +443,17 @@ function render() {
     drawOutfitScreen(ctx, canvas.width, canvas.height, outfit, outfitRow)
     return
   }
+  if (screen === 'walkin' && walkin && walkinVillage) {
+    const eff = effectiveTemperament(walkinVillage.temperament, world.state.fear)
+    const note = walkin.hostile
+      ? 'The people remember what your kind has done. They close in...'
+      : eff > 0.66
+        ? 'The people watch you with open curiosity.'
+        : 'The people keep their distance, wary of the stranger.'
+    drawWalkin(ctx, canvas.width, canvas.height, walkin, tileset, note)
+    if (flash.t > 0) drawResult(ctx, canvas.width, canvas.height, flash.text)
+    return
+  }
 
   renderWorld(rc, world.cam, world.map, world.fog, world.villages, world.explorer, world.ship, world.sailing)
   renderStorms(rc, world.cam, world.weather, world.state.elapsed, world.map, world.fog)
@@ -412,7 +492,7 @@ function render() {
   }
 
   if (flash.t > 0 && screen === 'playing') drawResult(ctx, canvas.width, canvas.height, flash.text)
-  if (encounter) drawEncounter(ctx, canvas.width, canvas.height, encounter, world.state.goods)
+  if (encounter) drawEncounter(ctx, canvas.width, canvas.height, encounter, world.state.goods, world.state.fear)
 
   if (screen === 'over') {
     const won = world.state.status === GameStatus.Won
@@ -434,6 +514,30 @@ if (import.meta.env.DEV) {
     step: (frames = 1) => {
       for (let i = 0; i < frames; i++) update(1 / 60)
       render() // keep the canvas current even when rAF is throttled
+    },
+    walkin: () => walkin,
+    audioLog: () => player.getLog(),
+    renderCue: async (id: string) => {
+      const off = new OfflineAudioContext(1, 2 * 44100, 44100)
+      synthesize(off, off.destination, id as never, 0)
+      const buf = await off.startRendering()
+      const d = buf.getChannelData(0)
+      let sum = 0
+      for (let i = 0; i < d.length; i++) sum += d[i] * d[i]
+      const rms = Math.sqrt(sum / d.length)
+      const goertzel = (freq: number) => {
+        const w = (2 * Math.PI * freq) / 44100
+        const c = 2 * Math.cos(w)
+        let s0 = 0, s1 = 0, s2 = 0
+        const n = Math.min(d.length, 44100)
+        for (let i = 0; i < n; i++) {
+          s0 = d[i] + c * s1 - s2
+          s2 = s1
+          s1 = s0
+        }
+        return Math.sqrt(s1 * s1 + s2 * s2 - c * s1 * s2) / n
+      }
+      return { rms, e660: goertzel(660), e880: goertzel(880), e120: goertzel(120), e3000: goertzel(3000) }
     },
     setSeed: (s: string) => {
       world = newWorld(s)
