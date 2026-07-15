@@ -180,7 +180,7 @@ export function drawEncounter(
   goods: number,
   fear = 0,
 ): void {
-  const { x, y } = panel(ctx, viewW, viewH, 580, 268)
+  const { x, y } = panel(ctx, viewW, viewH, Math.min(580, viewW - 24), 268)
   const cx = viewW / 2
   const title = v.golden ? 'A CITY OF GOLD!' : 'A native village'
   center(ctx, title, cx, y + 44, "bold 26px 'Courier New', monospace", v.golden ? '#f4c430' : '#e0d18a')
@@ -217,11 +217,18 @@ export function drawEncounter(
 }
 
 export function drawResult(ctx: CanvasRenderingContext2D, viewW: number, viewH: number, text: string): void {
-  const { y } = panel(ctx, viewW, viewH, 460, 90)
+  const { y } = panel(ctx, viewW, viewH, Math.min(460, viewW - 24), 90)
   center(ctx, text, viewW / 2, y + 54, "18px 'Courier New', monospace", '#7fd17f')
 }
 
-export function drawGameOver(ctx: CanvasRenderingContext2D, viewW: number, viewH: number, won: boolean, score: number): void {
+export function drawGameOver(
+  ctx: CanvasRenderingContext2D,
+  viewW: number,
+  viewH: number,
+  won: boolean,
+  score: number,
+  career?: Career,
+): void {
   ctx.fillStyle = 'rgba(6,6,12,0.9)'
   ctx.fillRect(0, 0, viewW, viewH)
   const cx = viewW / 2
@@ -233,5 +240,9 @@ export function drawGameOver(ctx: CanvasRenderingContext2D, viewW: number, viewH
     center(ctx, 'Your crew will chart no more.', cx, viewH / 2, "18px 'Courier New', monospace", '#c9c9d2')
   }
   center(ctx, `Final score: ${score}`, cx, viewH / 2 + 40, "20px 'Courier New', monospace", '#ffffff')
-  center(ctx, 'Press ENTER for a new expedition', cx, viewH / 2 + 84, "16px 'Courier New', monospace", '#7fd17f')
+  if (career) {
+    const line = `${rankTitle(career.banked)} · ${career.voyages} ${career.voyages === 1 ? 'voyage' : 'voyages'} completed · ${career.banked} gold banked`
+    center(ctx, line, cx, viewH / 2 + 70, "15px 'Courier New', monospace", '#c9a94f')
+  }
+  center(ctx, 'Press ENTER for a new expedition', cx, viewH / 2 + 108, "16px 'Courier New', monospace", '#7fd17f')
 }

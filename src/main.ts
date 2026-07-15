@@ -571,9 +571,11 @@ function render() {
 
   renderWorld(rc, world.cam, world.map, world.fog, world.villages, world.explorer, world.ships, world.activeShip, world.sailing, world.outposts)
   renderStorms(rc, world.cam, world.weather, world.state.elapsed, world.map, world.fog)
+  const hudH = drawHud(ctx, canvas.width, world.state, career.banked)
+  renderMinimap(rc, world.map, world.fog, world.explorer, world.villages, world.ships, world.outposts, hudH + 12)
   if (world.sailing) {
     const wind = windAt(world.weather, world.state.elapsed)
-    drawWindIndicator(ctx, canvas.width, wind.angle, wind.strength)
+    drawWindIndicator(ctx, canvas.width, wind.angle, wind.strength, hudH + 12)
     // storm vignette: the sky presses down while you ride one out
     if (stormAt(world.weather, world.state.elapsed, world.map.width, world.map.height, world.explorer.x, world.explorer.y)) {
       const g = ctx.createRadialGradient(
@@ -586,9 +588,6 @@ function render() {
       ctx.fillRect(0, 0, canvas.width, canvas.height)
     }
   }
-  renderMinimap(rc, world.map, world.fog, world.explorer, world.villages, world.ships, world.outposts)
-  drawHud(ctx, canvas.width, world.state, career.banked)
-
   if (!encounter && screen === 'playing') {
     let text = ''
     let color = '#e8e8ee'
@@ -627,7 +626,7 @@ function render() {
 
   if (screen === 'over') {
     const won = world.state.status === GameStatus.Won
-    drawGameOver(ctx, canvas.width, canvas.height, won, score(world.state, world.fog.revealedCount) + career.banked)
+    drawGameOver(ctx, canvas.width, canvas.height, won, score(world.state, world.fog.revealedCount) + career.banked, career)
   }
 }
 

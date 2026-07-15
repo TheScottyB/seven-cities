@@ -180,11 +180,12 @@ export function renderMinimap(
   villages: Village[],
   ships: { x: number; y: number }[] = [],
   outposts: Outpost[] = [],
+  top = 52,
 ): void {
   const { ctx, viewW } = rc
   const size = 120
   const px = viewW - size - 12
-  const py = 52
+  const py = top
   const scale = size / map.width
   ctx.fillStyle = 'rgba(0,0,0,0.55)'
   ctx.fillRect(px - 2, py - 2, size + 4, size + 4)

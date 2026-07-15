@@ -8,9 +8,10 @@ export function drawWindIndicator(
   viewW: number,
   angle: number,
   strength: number,
+  top = 52,
 ): void {
   const cx = viewW - 170
-  const cy = 112
+  const cy = top + 60
   const r = 24
   ctx.fillStyle = 'rgba(0,0,0,0.55)'
   ctx.beginPath()
@@ -45,9 +46,13 @@ export function drawWindIndicator(
   ctx.textAlign = 'left'
 }
 
-export function drawHud(ctx: CanvasRenderingContext2D, viewW: number, s: GameState, banked = 0): void {
-  ctx.fillStyle = 'rgba(0,0,0,0.6)'
-  ctx.fillRect(0, 0, viewW, 40)
+/**
+ * Draws the status bar, wrapping onto extra rows when the window is narrow
+ * instead of clipping. Items that carry no information yet (empty bank,
+ * no fear abroad) stay hidden. Returns the bar height so everything anchored
+ * beneath it (minimap, wind compass) can shift down.
+ */
+export function drawHud(ctx: CanvasRenderingContext2D, viewW: number, s: GameState, banked = 0): number {
   ctx.font = FONT
   ctx.textBaseline = 'middle'
 
@@ -56,20 +61,37 @@ export function drawHud(ctx: CanvasRenderingContext2D, viewW: number, s: GameSta
     ['Goods', Math.floor(s.goods).toString(), '#d8925c'],
     ['Crew', Math.floor(s.crew).toString(), '#e0d18a'],
     ['Gold', Math.floor(s.gold).toString(), '#f4c430'],
-    ['Bank', Math.floor(banked).toString(), '#c9a94f'],
-    ['Morale', Math.floor(s.morale).toString(), '#7fb0ff'],
-    ['Fear', Math.floor(s.fear).toString(), s.fear > 40 ? '#c0504d' : '#8a8a94'],
-    ['Day', s.day.toString(), '#cccccc'],
-    ['Cities', `${s.citiesFound}/7`, '#f4c430'],
   ]
+  if (banked > 0) items.push(['Bank', Math.floor(banked).toString(), '#c9a94f'])
+  items.push(['Morale', Math.floor(s.morale).toString(), '#7fb0ff'])
+  if (s.fear >= 1) items.push(['Fear', Math.floor(s.fear).toString(), s.fear > 40 ? '#c0504d' : '#8a8a94'])
+  items.push(['Day', s.day.toString(), '#cccccc'])
+  items.push(['Cities', `${s.citiesFound}/7`, '#f4c430'])
 
+  // measure and wrap
+  const placed: { x: number; row: number; label: string; value: string; color: string; lw: number }[] = []
   let x = 16
+  let row = 0
   for (const [label, value, color] of items) {
-    ctx.fillStyle = '#8a8a94'
-    ctx.fillText(label + ':', x, 20)
     const lw = ctx.measureText(label + ': ').width
-    ctx.fillStyle = color
-    ctx.fillText(value, x + lw, 20)
-    x += lw + ctx.measureText(value).width + 24
+    const total = lw + ctx.measureText(value).width + 24
+    if (x + total > viewW - 8 && x > 16) {
+      row++
+      x = 16
+    }
+    placed.push({ x, row, label, value, color, lw })
+    x += total
   }
+
+  const height = 40 + row * 24
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'
+  ctx.fillRect(0, 0, viewW, height)
+  for (const it of placed) {
+    const y = 20 + it.row * 24
+    ctx.fillStyle = '#8a8a94'
+    ctx.fillText(it.label + ':', it.x, y)
+    ctx.fillStyle = it.color
+    ctx.fillText(it.value, it.x + it.lw, y)
+  }
+  return height
 }

@@ -3,7 +3,7 @@ import type { Tileset } from '../art/tileset'
 import { TILE } from '../world/tiles'
 import { drawVillager, drawChief, drawHut, drawExplorer, drawShadow } from '../art/sprites'
 
-const SCENE_PX = 40 // walk-in tiles render larger than the overworld
+const SCENE_PX_MAX = 40 // walk-in tiles render larger than the overworld
 
 export function drawWalkin(
   ctx: CanvasRenderingContext2D,
@@ -16,6 +16,11 @@ export function drawWalkin(
   ctx.fillStyle = '#0a0a12'
   ctx.fillRect(0, 0, viewW, viewH)
 
+  // scale the scene down on small windows rather than clipping it
+  const SCENE_PX = Math.max(
+    16,
+    Math.min(SCENE_PX_MAX, Math.floor((viewW - 24) / scene.w), Math.floor((viewH - 90) / scene.h)),
+  )
   const sw = scene.w * SCENE_PX
   const sh = scene.h * SCENE_PX
   const ox = (viewW - sw) / 2
