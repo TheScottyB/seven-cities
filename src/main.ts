@@ -3,7 +3,8 @@ import { placeVillages, nearestUnvisitedGolden, type Village } from './world/vil
 import { makeFog, reveal } from './world/fog'
 import { makeState, tick, score, GameStatus } from './game/state'
 import { makeExplorer, moveExplorer } from './game/explorer'
-import { findMooring, moveShip, landingSpots, type Ship } from './game/ship'
+import { findMoorings, moveShip, landingSpots, type Ship } from './game/ship'
+import { foundOutpost, tickOutposts, resupply, canFound, OUTPOST_COST, OUTPOST_CREW, type Outpost } from './game/outposts'
 import { makeWeather, windAt, windFactor, stormAt, applyStorm, type Weather } from './game/weather'
 import { discoverVillage, resolveTrade, resolveGift, resolveAttack, effectiveTemperament } from './game/encounter'
 import { makeScene, tickScene, type WalkinScene } from './game/walkin'
@@ -57,8 +58,10 @@ interface World {
   fog: ReturnType<typeof makeFog>
   state: ReturnType<typeof makeState>
   explorer: ReturnType<typeof makeExplorer>
-  ship: Ship
+  ships: Ship[]
+  activeShip: number
   sailing: boolean
+  outposts: Outpost[]
   weather: Weather
   cam: Camera
 }
@@ -113,11 +116,11 @@ function newWorld(seedStr: string): World {
   const villages = placeVillages(map, VILLAGE_COUNT)
   const fog = makeFog(map.width, map.height)
   const explorer = makeExplorer(map)
-  const ship = findMooring(map)
   reveal(fog, Math.floor(explorer.x), Math.floor(explorer.y), REVEAL_RADIUS)
   return {
     seedStr, map, villages, fog, state: makeState(), explorer,
-    ship, sailing: false, weather: makeWeather(seed, map),
+    ships: findMoorings(map, 1), activeShip: 0, sailing: false,
+    outposts: [], weather: makeWeather(seed, map),
     cam: { x: explorer.x, y: explorer.y },
   }
 }
@@ -133,9 +136,8 @@ function embarkVoyage() {
   const { map } = world
   world.explorer.x = map.landing.x + 0.5
   world.explorer.y = map.landing.y + 0.5
-  const mooring = findMooring(map)
-  world.ship.x = mooring.x
-  world.ship.y = mooring.y
+  world.ships = findMoorings(map, outfit.ships)
+  world.activeShip = 0
   world.sailing = false
   world.state.morale = 100 // a fresh crew signs on
   applyOutfit()
@@ -144,6 +146,8 @@ function embarkVoyage() {
 }
 
 function applyOutfit() {
+  world.ships = findMoorings(world.map, outfit.ships)
+  world.activeShip = 0
   world.state.food = outfit.food
   world.state.goods = outfit.goods
   world.state.crew = outfit.crew
@@ -165,9 +169,11 @@ function saveGame() {
         seedStr: world.seedStr,
         state: world.state,
         explorer: { x: world.explorer.x, y: world.explorer.y },
-        ship: { x: world.ship.x, y: world.ship.y },
+        ships: world.ships.map((sh) => ({ x: sh.x, y: sh.y })),
+        activeShip: world.activeShip,
         sailing: world.sailing,
         career,
+        outposts: world.outposts,
         fogSeen: world.fog.seen,
         villages: world.villages,
       }),
@@ -224,8 +230,10 @@ function restoreWorld(save: SaveData): World {
   w.state = { ...save.state }
   w.explorer.x = save.explorer.x
   w.explorer.y = save.explorer.y
-  w.ship = { ...save.ship }
+  w.ships = save.ships.map((sh) => ({ ...sh }))
+  w.activeShip = Math.min(save.activeShip, w.ships.length - 1)
   w.sailing = save.sailing
+  w.outposts = save.outposts.map((o) => ({ ...o }))
   career = { ...save.career }
   w.fog.seen = unpackBits(save.fogSeenB64, w.fog.seen.length)
   w.fog.revealedCount = w.fog.seen.reduce((a, b) => a + b, 0)
@@ -239,6 +247,32 @@ function restoreWorld(save: SaveData): World {
 }
 
 // --- update --------------------------------------------------------------
+
+function nearestShipIndex(): number {
+  let best = -1
+  let bestD = BOARD_DIST
+  world.ships.forEach((sh, i) => {
+    const d = Math.hypot(sh.x - world.explorer.x, sh.y - world.explorer.y)
+    if (d <= bestD) {
+      bestD = d
+      best = i
+    }
+  })
+  return best
+}
+
+function nearestOutpost(): Outpost | null {
+  let best: Outpost | null = null
+  let bestD = INTERACT_DIST
+  for (const o of world.outposts) {
+    const d = Math.hypot(o.x + 0.5 - world.explorer.x, o.y + 0.5 - world.explorer.y)
+    if (d <= bestD) {
+      bestD = d
+      best = o
+    }
+  }
+  return best
+}
 
 function nearestVillage(): Village | null {
   let best: Village | null = null
@@ -372,13 +406,27 @@ function update(dt: number) {
         if (flash.t <= 0) flash = { text: 'A storm batters the ship — crew overboard!', t: 1.2 }
       }
       moveShip(map, explorer, dx, dy, sdt, mul, drX, drY)
-      world.ship.x = explorer.x
-      world.ship.y = explorer.y
+      world.ships[world.activeShip].x = explorer.x
+      world.ships[world.activeShip].y = explorer.y
     } else {
       moveExplorer(map, explorer, dx, dy, sdt)
     }
     reveal(fog, Math.floor(explorer.x), Math.floor(explorer.y), REVEAL_RADIUS)
     tick(state, sdt)
+    tickOutposts(world.outposts, sdt)
+
+    if (!world.sailing && input.pressed('f')) {
+      // raise a mission fort here
+      const tx = Math.floor(explorer.x)
+      const ty = Math.floor(explorer.y)
+      const nearVillage = world.villages.some((v) => Math.hypot(v.x - tx, v.y - ty) < 4)
+      if (nearVillage) flash = { text: 'The people already dwell here.', t: 2 }
+      else if (!canFound(state)) flash = { text: `A fort needs ${OUTPOST_COST} gold and ${OUTPOST_CREW} men to garrison.`, t: 2.5 }
+      else if (foundOutpost(state, world.outposts, tx, ty)) {
+        flash = { text: 'A mission fort rises. The garrison will gather provisions.', t: 3 }
+        saveGame()
+      } else flash = { text: 'Too close to another outpost.', t: 2 }
+    }
 
     if (input.pressed('action')) {
       if (world.sailing && explorer.x < 4) {
@@ -402,6 +450,8 @@ function update(dt: number) {
         }
       } else {
         const v = nearestVillage()
+        const outpost = nearestOutpost()
+        const shipIdx = nearestShipIndex()
         if (v) {
           const firstGolden = v.golden && !v.visited
           discoverVillage(state, v)
@@ -411,10 +461,15 @@ function update(dt: number) {
           walkin = makeScene(v, state.fear)
           walkinVillage = v
           screen = 'walkin'
-        } else if (Math.hypot(world.ship.x - explorer.x, world.ship.y - explorer.y) <= BOARD_DIST) {
+        } else if (outpost && outpost.stock >= 1) {
+          const taken = resupply(state, outpost)
+          flash = { text: `The garrison shares its stores: +${taken} provisions.`, t: 2.5 }
+          saveGame()
+        } else if (shipIdx >= 0) {
+          world.activeShip = shipIdx
           world.sailing = true
-          explorer.x = world.ship.x
-          explorer.y = world.ship.y
+          explorer.x = world.ships[shipIdx].x
+          explorer.y = world.ships[shipIdx].y
           flash = { text: 'You board your ship. The coast is yours to follow.', t: 2 }
           saveGame()
         }
@@ -514,14 +569,25 @@ function render() {
     return
   }
 
-  renderWorld(rc, world.cam, world.map, world.fog, world.villages, world.explorer, world.ship, world.sailing)
+  renderWorld(rc, world.cam, world.map, world.fog, world.villages, world.explorer, world.ships, world.activeShip, world.sailing, world.outposts)
   renderStorms(rc, world.cam, world.weather, world.state.elapsed, world.map, world.fog)
   if (world.sailing) {
     const wind = windAt(world.weather, world.state.elapsed)
     drawWindIndicator(ctx, canvas.width, wind.angle, wind.strength)
+    // storm vignette: the sky presses down while you ride one out
+    if (stormAt(world.weather, world.state.elapsed, world.map.width, world.map.height, world.explorer.x, world.explorer.y)) {
+      const g = ctx.createRadialGradient(
+        canvas.width / 2, canvas.height / 2, Math.min(canvas.width, canvas.height) * 0.3,
+        canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) * 0.7,
+      )
+      g.addColorStop(0, 'rgba(20,12,16,0)')
+      g.addColorStop(1, 'rgba(30,10,14,0.5)')
+      ctx.fillStyle = g
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+    }
   }
-  renderMinimap(rc, world.map, world.fog, world.explorer, world.villages, world.ship)
-  drawHud(ctx, canvas.width, world.state)
+  renderMinimap(rc, world.map, world.fog, world.explorer, world.villages, world.ships, world.outposts)
+  drawHud(ctx, canvas.width, world.state, career.banked)
 
   if (!encounter && screen === 'playing') {
     let text = ''
@@ -535,10 +601,13 @@ function render() {
       }
     } else {
       const prompt = nearestVillage()
+      const outpost = nearestOutpost()
       if (prompt) {
         text = `Press E to approach ${prompt.golden ? 'the golden city' : 'the village'}`
         if (prompt.golden) color = '#f4c430'
-      } else if (Math.hypot(world.ship.x - world.explorer.x, world.ship.y - world.explorer.y) <= BOARD_DIST) {
+      } else if (outpost && outpost.stock >= 1) {
+        text = `Press E to resupply (${Math.floor(outpost.stock)} in stores)`
+      } else if (nearestShipIndex() >= 0) {
         text = 'Press E to board your ship'
       }
     }

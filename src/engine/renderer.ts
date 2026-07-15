@@ -5,7 +5,8 @@ import { Explorer } from '../game/explorer'
 import type { Village } from '../world/villages'
 import { Camera, worldToScreen } from './camera'
 import { TILE_PX, type Tileset } from '../art/tileset'
-import { drawExplorer, drawVillage, drawShip, drawCanoe, drawShadow } from '../art/sprites'
+import { drawExplorer, drawVillage, drawShip, drawCanoe, drawFort, drawShadow } from '../art/sprites'
+import type { Outpost } from '../game/outposts'
 import { TILE } from '../world/tiles'
 
 export interface RenderCtx {
@@ -30,8 +31,10 @@ export function renderWorld(
   fog: Fog,
   villages: Village[],
   explorer: Explorer,
-  ship: { x: number; y: number },
+  ships: { x: number; y: number }[],
+  activeShip: number,
   sailing: boolean,
+  outposts: Outpost[],
 ): void {
   const { ctx, viewW, viewH, tileset } = rc
   ctx.fillStyle = '#05060a'
@@ -72,6 +75,14 @@ export function renderWorld(
         if (landAt(tx, ty + 1)) ctx.fillRect(sx, sy + TILE_PX - 2, TILE_PX, 2)
         if (landAt(tx - 1, ty)) ctx.fillRect(sx, sy, 2, TILE_PX)
         if (landAt(tx + 1, ty)) ctx.fillRect(sx + TILE_PX - 2, sy, 2, TILE_PX)
+      } else if (t !== TILE.RIVER) {
+        // soft seams where land terrains change — defines the country
+        const at = (x: number, y: number) =>
+          x < 0 || y < 0 || x >= map.width || y >= map.height ? t : map.tiles[y * map.width + x]
+        ctx.fillStyle = 'rgba(10,14,10,0.16)'
+        const e = at(tx + 1, ty), so = at(tx, ty + 1)
+        if (e !== t && e !== TILE.OCEAN && e !== TILE.RIVER) ctx.fillRect(sx + TILE_PX - 1, sy, 1, TILE_PX)
+        if (so !== t && so !== TILE.OCEAN && so !== TILE.RIVER) ctx.fillRect(sx, sy + TILE_PX - 1, TILE_PX, 1)
       }
 
       // dim tiles that are charted but outside the explorer's current sight
@@ -92,12 +103,22 @@ export function renderWorld(
     ctx.globalAlpha = 1
   }
 
-  // the moored ship, once its waters are charted
-  if (!sailing && isSeen(fog, Math.floor(ship.x), Math.floor(ship.y))) {
-    const p = worldToScreen(cam, viewW, viewH, ship.x, ship.y)
+  // mission forts on the trail
+  for (const o of outposts) {
+    if (!isSeen(fog, Math.floor(o.x), Math.floor(o.y))) continue
+    const p = worldToScreen(cam, viewW, viewH, o.x + 0.5, o.y + 0.5)
+    drawShadow(ctx, p.sx, p.sy + TILE_PX * 0.3, TILE_PX * 0.45)
+    drawFort(ctx, p.sx, p.sy)
+  }
+
+  // the moored fleet, once its waters are charted
+  ships.forEach((sh, i) => {
+    if (sailing && i === activeShip) return // the flagship is under you
+    if (!isSeen(fog, Math.floor(sh.x), Math.floor(sh.y))) return
+    const p = worldToScreen(cam, viewW, viewH, sh.x, sh.y)
     drawShadow(ctx, p.sx, p.sy + TILE_PX * 0.3, TILE_PX * 0.42)
     drawShip(ctx, p.sx, p.sy)
-  }
+  })
 
   const { sx, sy } = worldToScreen(cam, viewW, viewH, explorer.x, explorer.y)
   const underfoot = map.tiles[Math.floor(explorer.y) * map.width + Math.floor(explorer.x)]
@@ -157,7 +178,8 @@ export function renderMinimap(
   fog: Fog,
   explorer: Explorer,
   villages: Village[],
-  ship?: { x: number; y: number },
+  ships: { x: number; y: number }[] = [],
+  outposts: Outpost[] = [],
 ): void {
   const { ctx, viewW } = rc
   const size = 120
@@ -183,8 +205,8 @@ export function renderMinimap(
   }
   ctx.fillStyle = '#ff5555'
   ctx.fillRect(px + explorer.x * scale - 1, py + explorer.y * scale - 1, 3, 3)
-  if (ship) {
-    ctx.fillStyle = '#cfe6ff'
-    ctx.fillRect(px + ship.x * scale - 1, py + ship.y * scale - 1, 3, 3)
-  }
+  ctx.fillStyle = '#cfe6ff'
+  for (const sh of ships) ctx.fillRect(px + sh.x * scale - 1, py + sh.y * scale - 1, 3, 3)
+  ctx.fillStyle = '#e8d8a0'
+  for (const o of outposts) ctx.fillRect(px + o.x * scale - 1, py + o.y * scale - 1, 3, 3)
 }

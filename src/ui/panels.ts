@@ -50,6 +50,7 @@ export function drawOutfitScreen(
     ['food', 'Food', `rations for the crew  (${PRICES.food} gold each)`],
     ['goods', 'Trade goods', `needed to trade & gift  (${PRICES.goods} gold each)`],
     ['crew', 'Crew', `men for the expedition  (${PRICES.crew} gold each)`],
+    ['ships', 'Ships', `caravels in your fleet  (${PRICES.ships} gold each)`],
   ]
   let y = viewH / 2 - 52
   ctx.textAlign = 'left'
@@ -97,7 +98,7 @@ export function drawStartScreen(
     'Manage your food, crew, and morale. Discover all seven',
     'fabled Cities of Gold before your expedition falls apart.',
     '',
-    'MOVE  W A S D / arrows    INTERACT  E / Space    CHOOSE  1 2 3    MENU  Esc',
+    'MOVE  W A S D    INTERACT  E    FORT  F    CHOOSE  1 2 3    SOUND  M    MENU  Esc',
     '',
     `Seed: ${seed}`,
     '',

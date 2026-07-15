@@ -1,5 +1,6 @@
 import type { GameState } from './state'
 import type { Career } from './career'
+import type { Outpost } from './outposts'
 import type { Village } from '../world/villages'
 
 /**
@@ -9,13 +10,15 @@ import type { Village } from '../world/villages'
  * bit-packed then base64'd (~6 KB for a 192x192 map).
  */
 export interface SaveData {
-  version: 5
+  version: 6
   seedStr: string
   state: GameState
   explorer: { x: number; y: number }
-  ship: { x: number; y: number }
+  ships: { x: number; y: number }[]
+  activeShip: number
   sailing: boolean
   career: Career
+  outposts: Outpost[]
   fogSeenB64: string
   villages: Village[]
 }
@@ -41,20 +44,24 @@ export function serializeSave(data: {
   seedStr: string
   state: GameState
   explorer: { x: number; y: number }
-  ship: { x: number; y: number }
+  ships: { x: number; y: number }[]
+  activeShip: number
   sailing: boolean
   career: Career
+  outposts: Outpost[]
   fogSeen: Uint8Array
   villages: Village[]
 }): string {
   const save: SaveData = {
-    version: 5,
+    version: 6,
     seedStr: data.seedStr,
     state: data.state,
     explorer: data.explorer,
-    ship: data.ship,
+    ships: data.ships,
+    activeShip: data.activeShip,
     sailing: data.sailing,
     career: data.career,
+    outposts: data.outposts,
     fogSeenB64: packBits(data.fogSeen),
     villages: data.villages,
   }
@@ -64,12 +71,14 @@ export function serializeSave(data: {
 export function deserializeSave(json: string): SaveData | null {
   try {
     const d = JSON.parse(json)
-    if (!d || typeof d !== 'object' || d.version !== 5) return null
+    if (!d || typeof d !== 'object' || d.version !== 6) return null
     if (typeof d.seedStr !== 'string' || typeof d.fogSeenB64 !== 'string') return null
     if (!d.state || typeof d.state.food !== 'number' || typeof d.state.goods !== 'number' || typeof d.state.fear !== 'number') return null
     if (!d.explorer || typeof d.explorer.x !== 'number' || typeof d.explorer.y !== 'number') return null
-    if (!d.ship || typeof d.ship.x !== 'number' || typeof d.ship.y !== 'number') return null
+    if (!Array.isArray(d.ships) || d.ships.some((sh: { x?: unknown; y?: unknown }) => typeof sh?.x !== 'number' || typeof sh?.y !== 'number')) return null
+    if (typeof d.activeShip !== 'number') return null
     if (typeof d.sailing !== 'boolean') return null
+    if (!Array.isArray(d.outposts)) return null
     if (!d.career || typeof d.career.banked !== 'number' || typeof d.career.voyages !== 'number') return null
     if (!Array.isArray(d.villages)) return null
     return d as SaveData

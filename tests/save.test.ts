@@ -24,9 +24,11 @@ test('save round-trips the full expedition', () => {
     seedStr: '1492',
     state,
     explorer: { x: 50.5, y: 60.25 },
-    ship: { x: 48.5, y: 61.5 },
+    ships: [{ x: 48.5, y: 61.5 }, { x: 47.5, y: 61.5 }],
+    activeShip: 1,
     sailing: true,
     career: { banked: 2500, voyages: 2 },
+    outposts: [{ x: 90, y: 90, stock: 120 }],
     fogSeen: fog.seen,
     villages,
   })
@@ -35,8 +37,10 @@ test('save round-trips the full expedition', () => {
   expect(back.seedStr).toBe('1492')
   expect(back.state).toEqual(state)
   expect(back.explorer).toEqual({ x: 50.5, y: 60.25 })
-  expect(back.ship).toEqual({ x: 48.5, y: 61.5 })
+  expect(back.ships).toEqual([{ x: 48.5, y: 61.5 }, { x: 47.5, y: 61.5 }])
+  expect(back.activeShip).toBe(1)
   expect(back.sailing).toBe(true)
+  expect(back.outposts).toEqual([{ x: 90, y: 90, stock: 120 }])
   expect(back.career).toEqual({ banked: 2500, voyages: 2 })
   expect(Array.from(unpackBits(back.fogSeenB64, fog.seen.length))).toEqual(Array.from(fog.seen))
   expect(back.villages).toEqual(villages)
@@ -45,7 +49,7 @@ test('save round-trips the full expedition', () => {
 test('garbage and wrong versions are rejected', () => {
   expect(deserializeSave('not json {{{')).toBeNull()
   expect(deserializeSave('{"version": 99}')).toBeNull()
-  expect(deserializeSave('{"version": 5}')).toBeNull() // missing fields
+  expect(deserializeSave('{"version": 6}')).toBeNull() // missing fields
   expect(deserializeSave('null')).toBeNull()
   // pre-river saves (v1/v2) reference maps that no longer generate the same;
   // both are rejected cleanly
@@ -53,4 +57,5 @@ test('garbage and wrong versions are rejected', () => {
   expect(deserializeSave('{"version": 2, "seedStr": "x", "fogSeenB64": ""}')).toBeNull()
   expect(deserializeSave('{"version": 3, "seedStr": "x", "fogSeenB64": ""}')).toBeNull()
   expect(deserializeSave('{"version": 4, "seedStr": "x", "fogSeenB64": ""}')).toBeNull()
+  expect(deserializeSave('{"version": 5, "seedStr": "x", "fogSeenB64": ""}')).toBeNull()
 })

@@ -101,6 +101,26 @@ export function drawHut(g: CanvasRenderingContext2D, cx: number, cy: number, sz:
   g.fillRect(cx - sz * 0.1, cy + sz * 0.12, sz * 0.2, sz * 0.25)
 }
 
+/** A mission fort: palisade square, gate, and the expedition banner. */
+export function drawFort(g: CanvasRenderingContext2D, cx: number, cy: number): void {
+  const s = TILE_PX
+  g.fillStyle = '#6a4a2a'
+  g.fillRect(cx - s * 0.42, cy - s * 0.3, s * 0.84, s * 0.62)
+  g.fillStyle = '#8a6a42'
+  for (let i = 0; i < 5; i++) g.fillRect(cx - s * 0.42 + i * s * 0.2, cy - s * 0.38, s * 0.08, s * 0.12)
+  g.fillStyle = '#2a1c10'
+  g.fillRect(cx - s * 0.1, cy + s * 0.05, s * 0.2, s * 0.27)
+  // banner
+  g.strokeStyle = '#3a2a18'
+  g.lineWidth = 1
+  g.beginPath()
+  g.moveTo(cx + s * 0.3, cy - s * 0.3)
+  g.lineTo(cx + s * 0.3, cy - s * 0.62)
+  g.stroke()
+  g.fillStyle = '#f4c430'
+  g.fillRect(cx + s * 0.3, cy - s * 0.62, s * 0.22, s * 0.14)
+}
+
 /** The expedition's caravel: dark hull, white sail, pennant. */
 export function drawShip(g: CanvasRenderingContext2D, cx: number, cy: number): void {
   const s = TILE_PX

@@ -8,28 +8,30 @@ export interface Outfit {
   food: number
   goods: number
   crew: number
+  ships: number
 }
 
 export const BUDGET = 500
 
 /** gold per unit */
-export const PRICES: Record<keyof Outfit, number> = { food: 0.5, goods: 2, crew: 5 }
+export const PRICES: Record<keyof Outfit, number> = { food: 0.5, goods: 2, crew: 5, ships: 100 }
 
 export const LIMITS: Record<keyof Outfit, [number, number]> = {
   food: [0, 800],
   goods: [0, 200],
   crew: [10, 100],
+  ships: [1, 4],
 }
 
 /** how much one keypress adjusts each line item */
-export const STEPS: Record<keyof Outfit, number> = { food: 20, goods: 10, crew: 5 }
+export const STEPS: Record<keyof Outfit, number> = { food: 20, goods: 10, crew: 5, ships: 1 }
 
 export function defaultOutfit(): Outfit {
-  return { food: 240, goods: 80, crew: 30 }
+  return { food: 180, goods: 80, crew: 25, ships: 1 }
 }
 
 export function outfitCost(o: Outfit): number {
-  return o.food * PRICES.food + o.goods * PRICES.goods + o.crew * PRICES.crew
+  return o.food * PRICES.food + o.goods * PRICES.goods + o.crew * PRICES.crew + o.ships * PRICES.ships
 }
 
 export function remainingBudget(o: Outfit, budget = BUDGET): number {

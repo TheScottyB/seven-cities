@@ -17,19 +17,26 @@ function isOcean(map: GameMap, x: number, y: number): boolean {
 
 /** The ocean tile nearest the landing beach — where the expedition's ship waits. */
 export function findMooring(map: GameMap): Ship {
+  return findMoorings(map, 1)[0]
+}
+
+/** Anchorage for a fleet: the n ocean tiles nearest the landing beach. */
+export function findMoorings(map: GameMap, n: number): Ship[] {
   const { landing } = map
-  for (let r = 1; r < 8; r++) {
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
+  const moorings: Ship[] = []
+  for (let r = 1; r < 12 && moorings.length < n; r++) {
+    for (let dy = -r; dy <= r && moorings.length < n; dy++) {
+      for (let dx = -r; dx <= r && moorings.length < n; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue // ring only
         const x = landing.x + dx
         const y = landing.y + dy
-        if (isOcean(map, x, y)) return { x: x + 0.5, y: y + 0.5 }
+        if (isOcean(map, x, y)) moorings.push({ x: x + 0.5, y: y + 0.5 })
       }
     }
   }
   // no ocean near the landing would mean a landlocked landing — mapgen prevents it
-  return { x: landing.x + 0.5, y: landing.y + 0.5 }
+  while (moorings.length < n) moorings.push({ x: landing.x + 0.5, y: landing.y + 0.5 })
+  return moorings
 }
 
 /**

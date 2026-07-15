@@ -11,8 +11,14 @@ export interface GameMap {
 }
 
 export function generateMap(seed: number, width = 192, height = 192): GameMap {
+  // The New World in the original's image: one tall continent spanning the
+  // map north-south, a wandering mountain cordillera down its spine, and an
+  // arc of islands off the arrival coast — a Caribbean between the Atlantic
+  // (the far west, where Spain lies) and the mainland.
   const elev = makeNoise2D(seed, 12)
   const moist = makeNoise2D(seed ^ 0x9e3779b9, 10)
+  const islandNoise = makeNoise2D(seed ^ 0x77777777, 6)
+  const spineNoise = makeNoise2D(seed ^ 0x13571357, 48)
   const tiles = new Uint8Array(width * height)
   const elevation = new Float32Array(width * height)
 
@@ -20,11 +26,20 @@ export function generateMap(seed: number, width = 192, height = 192): GameMap {
     for (let x = 0; x < width; x++) {
       const nx = x / width,
         ny = y / height
-      // radial-ish falloff keeps the continent off the map borders
-      const edge = Math.min(nx, ny, 1 - nx, 1 - ny)
-      let e = elev(x, y) * 0.85 + edge * 0.6 - 0.15
-      // push the west margin firmly into ocean so there's a coastline to land on
-      if (nx < 0.12) e -= (0.12 - nx) * 3
+      // continent mask: a tall band centered east of middle, thinning at the poles
+      const bandDx = (nx - 0.6) / 0.3
+      let mask = Math.max(0, 1 - bandDx * bandDx)
+      const polar = Math.min(ny, 1 - ny)
+      if (polar < 0.05) mask *= polar / 0.05
+      let e = elev(x, y) * 0.5 + mask * 0.42 - 0.1
+      // the cordillera: a ridge wandering north-south through the interior
+      const ridgeX = 0.66 + (spineNoise(0, y) - 0.5) * 0.18
+      const rd = (nx - ridgeX) / 0.05
+      e += Math.exp(-rd * rd) * 0.32 * Math.min(1, mask * 3)
+      // island arc between the Atlantic and the coast
+      if (nx > 0.1 && nx < 0.32) e += Math.max(0, islandNoise(x, y) - 0.62) * 1.1
+      // the far west is the open Atlantic — the road home to Spain
+      if (nx < 0.08) e -= (0.08 - nx) * 4
       elevation[y * width + x] = e
       tiles[y * width + x] = classify(e, moist(x, y))
     }

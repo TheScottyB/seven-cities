@@ -45,7 +45,7 @@ export function drawWindIndicator(
   ctx.textAlign = 'left'
 }
 
-export function drawHud(ctx: CanvasRenderingContext2D, viewW: number, s: GameState): void {
+export function drawHud(ctx: CanvasRenderingContext2D, viewW: number, s: GameState, banked = 0): void {
   ctx.fillStyle = 'rgba(0,0,0,0.6)'
   ctx.fillRect(0, 0, viewW, 40)
   ctx.font = FONT
@@ -56,6 +56,7 @@ export function drawHud(ctx: CanvasRenderingContext2D, viewW: number, s: GameSta
     ['Goods', Math.floor(s.goods).toString(), '#d8925c'],
     ['Crew', Math.floor(s.crew).toString(), '#e0d18a'],
     ['Gold', Math.floor(s.gold).toString(), '#f4c430'],
+    ['Bank', Math.floor(banked).toString(), '#c9a94f'],
     ['Morale', Math.floor(s.morale).toString(), '#7fb0ff'],
     ['Fear', Math.floor(s.fear).toString(), s.fear > 40 ? '#c0504d' : '#8a8a94'],
     ['Day', s.day.toString(), '#cccccc'],

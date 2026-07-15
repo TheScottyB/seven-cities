@@ -27,13 +27,13 @@ test('adjusting down decreases and clamps at the lower limit', () => {
 })
 
 test('cannot exceed the upper limit', () => {
-  let o = { food: 0, goods: 0, crew: 10 }
+  let o = { food: 0, goods: 0, crew: 10, ships: 1 }
   for (let i = 0; i < 200; i++) o = adjustOutfit(o, 'food', 1)
   expect(o.food).toBeLessThanOrEqual(LIMITS.food[1])
 })
 
 test('cannot spend past the budget', () => {
-  let o = { food: 0, goods: 0, crew: 10 }
+  let o = { food: 0, goods: 0, crew: 10, ships: 1 }
   // hammer everything upward; total cost must never exceed BUDGET
   for (let i = 0; i < 300; i++) {
     o = adjustOutfit(o, 'food', 1)
@@ -44,8 +44,8 @@ test('cannot spend past the budget', () => {
 })
 
 test('a richer budget lets the outfit grow past the base cap', () => {
-  let base = { food: 0, goods: 0, crew: 10 }
-  let rich = { food: 0, goods: 0, crew: 10 }
+  let base = { food: 0, goods: 0, crew: 10, ships: 1 }
+  let rich = { food: 0, goods: 0, crew: 10, ships: 1 }
   for (let i = 0; i < 300; i++) {
     base = adjustOutfit(adjustOutfit(base, 'goods', 1), 'food', 1)
     rich = adjustOutfit(adjustOutfit(rich, 'goods', 1, 900), 'food', 1, 900)
@@ -55,9 +55,17 @@ test('a richer budget lets the outfit grow past the base cap', () => {
   expect(outfitCost(rich)).toBeLessThanOrEqual(900)
 })
 
+test('a fleet can grow to four caravels within limits', () => {
+  let o = { food: 0, goods: 0, crew: 10, ships: 1 }
+  for (let i = 0; i < 10; i++) o = adjustOutfit(o, 'ships', 1, 2000)
+  expect(o.ships).toBe(4) // hard fleet cap
+  for (let i = 0; i < 10; i++) o = adjustOutfit(o, 'ships', -1, 2000)
+  expect(o.ships).toBe(1) // never shipless
+})
+
 test('rejected adjustment returns the outfit unchanged', () => {
   // spend the whole budget on goods, then try to add more
-  let o = { food: 0, goods: 0, crew: 10 }
+  let o = { food: 0, goods: 0, crew: 10, ships: 1 }
   for (let i = 0; i < 300; i++) o = adjustOutfit(o, 'goods', 1)
   const before = { ...o }
   const after = adjustOutfit(o, 'goods', 1)

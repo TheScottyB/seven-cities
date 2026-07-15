@@ -23,6 +23,7 @@ npm run dev      # open the printed localhost URL
 | `1` / `2` / `3` | Trade / Gift / Attack |
 | `Esc` | Leave a village or parley · save & return to menu |
 | `M` | Mute / unmute sound |
+| `F` | Found a mission fort (250 gold, 3 men garrison) |
 | `Enter` | Outfit a new expedition / set sail |
 | `C` | Continue your saved expedition (title screen) |
 | `↑↓ ←→` | Choose and adjust line items (outfitting screen) |
@@ -43,6 +44,11 @@ npm run dev      # open the printed localhost URL
 - **Explore** a real-time, smooth-scrolling tile map. Fog of war lifts as you travel and
   the territory you've charted stays on your map (and minimap, where discovered villages
   appear as dots — gold for Cities of Gold).
+- **Raise mission forts:** `F` founds an outpost on the trail (250 gold, 3 men stay as
+  garrison). Forts gather provisions over time; visit one (`E`) to carry off its stores.
+  They persist across voyages — the backbone of deep inland expeditions.
+- **Sail a fleet:** buy up to four caravels when outfitting. Each waits where you moor it,
+  so a spread fleet becomes a network of coastal waypoints.
 - **A career, not one voyage:** sail west for the open Atlantic and press `E` to return to
   Spain. Your gold is banked with the Crown, ranks are conferred (Captain, Commodore,
   Governor, Admiral, Viceroy), and each rank raises the budget for your next voyage — to
@@ -63,6 +69,12 @@ npm run dev      # open the printed localhost URL
   `C` on the title screen. The save clears when the expedition ends.
 - **Win** by reaching all 7 Cities of Gold. Your score rewards gold, territory charted, and
   villages contacted, minus the days spent.
+
+## The New World
+
+Each seed carves an Americas in miniature: one continent running the length of the map,
+a mountain cordillera wandering down its spine feeding the rivers, and an island arc off
+the west coast — a Caribbean between the mainland and the open Atlantic that leads home.
 
 ## Tech
 
