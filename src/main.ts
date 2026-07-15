@@ -7,6 +7,12 @@ import { findMooring, moveShip, landingSpots, type Ship } from './game/ship'
 import { discoverVillage, resolveTrade, resolveGift, resolveAttack } from './game/encounter'
 import { defaultOutfit, adjustOutfit, remainingBudget, type Outfit } from './game/outfit'
 import { serializeSave, deserializeSave, unpackBits, type SaveData } from './game/save'
+import {
+  addEntry,
+  serializeChronicle,
+  deserializeChronicle,
+  type ChronicleEntry,
+} from './game/chronicle'
 import { buildTileset } from './art/tileset'
 import { Input } from './engine/input'
 import { centerCamera, type Camera } from './engine/camera'
@@ -23,6 +29,7 @@ const INTERACT_DIST = 1.4
 const RUMOR_RADIUS = 4
 const AUTOSAVE_EVERY = 5 // seconds
 const SAVE_KEY = 'seven-cities-save'
+const CHRONICLE_KEY = 'seven-cities-chronicle'
 
 type Screen = 'start' | 'outfit' | 'playing' | 'over'
 
@@ -112,6 +119,31 @@ function loadSave(): SaveData | null {
     return raw ? deserializeSave(raw) : null
   } catch {
     return null
+  }
+}
+
+function loadChronicle(): ChronicleEntry[] {
+  try {
+    return deserializeChronicle(localStorage.getItem(CHRONICLE_KEY) ?? '[]')
+  } catch {
+    return []
+  }
+}
+
+function recordExpedition() {
+  const s = world.state
+  const entry: ChronicleEntry = {
+    seedStr: world.seedStr,
+    won: s.status === GameStatus.Won,
+    score: score(s, world.fog.revealedCount),
+    gold: Math.floor(s.gold),
+    day: s.day,
+    cities: s.citiesFound,
+  }
+  try {
+    localStorage.setItem(CHRONICLE_KEY, serializeChronicle(addEntry(loadChronicle(), entry)))
+  } catch {
+    /* chronicle is a nicety — never let storage failures break the game */
   }
 }
 
@@ -267,6 +299,7 @@ function update(dt: number) {
 
     if (state.status !== GameStatus.Playing) {
       clearSave()
+      recordExpedition()
       screen = 'over'
     }
   }
@@ -319,7 +352,7 @@ function render() {
   const rc: RenderCtx = { ctx, viewW: canvas.width, viewH: canvas.height, tileset }
 
   if (screen === 'start') {
-    drawStartScreen(ctx, canvas.width, canvas.height, world.seedStr, loadSave() !== null)
+    drawStartScreen(ctx, canvas.width, canvas.height, world.seedStr, loadSave() !== null, loadChronicle())
     return
   }
   if (screen === 'outfit') {

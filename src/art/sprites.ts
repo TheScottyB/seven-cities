@@ -1,5 +1,15 @@
 import { TILE_PX } from './tileset'
 
+/** Soft elliptical drop shadow that grounds a sprite on the terrain. */
+export function drawShadow(g: CanvasRenderingContext2D, cx: number, cy: number, radius: number): void {
+  g.save()
+  g.fillStyle = 'rgba(0,0,0,0.3)'
+  g.beginPath()
+  g.ellipse(cx, cy, radius, radius * 0.38, 0, 0, Math.PI * 2)
+  g.fill()
+  g.restore()
+}
+
 /** The conquistador: a little figure with a helmet and cape. */
 export function drawExplorer(g: CanvasRenderingContext2D, cx: number, cy: number): void {
   const s = TILE_PX

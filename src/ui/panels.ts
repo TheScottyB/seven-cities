@@ -1,6 +1,7 @@
 import type { Village } from '../world/villages'
 import { Outfit, outfitCost, remainingBudget, PRICES, BUDGET } from '../game/outfit'
 import { TRADE_GOODS, GIFT_GOODS } from '../game/encounter'
+import { bestScore, type ChronicleEntry } from '../game/chronicle'
 
 function panel(ctx: CanvasRenderingContext2D, viewW: number, viewH: number, w: number, h: number) {
   const x = (viewW - w) / 2
@@ -79,6 +80,7 @@ export function drawStartScreen(
   viewH: number,
   seed: string,
   hasSave: boolean,
+  chronicle: ChronicleEntry[] = [],
 ): void {
   ctx.fillStyle = '#0a0a12'
   ctx.fillRect(0, 0, viewW, viewH)
@@ -104,6 +106,20 @@ export function drawStartScreen(
     const color = l.startsWith('Press ENTER') ? '#7fd17f' : l.startsWith('Press C') ? '#f4c430' : '#9a9aa6'
     center(ctx, l, cx, y, "16px 'Courier New', monospace", color)
     y += 26
+  }
+
+  // the Chronicle: past expeditions, newest first
+  if (chronicle.length) {
+    y += 18
+    const best = bestScore(chronicle)
+    center(ctx, `— CHRONICLE OF EXPEDITIONS · best score ${best} —`, cx, y, "bold 15px 'Courier New', monospace", '#f4c430')
+    y += 24
+    for (const e of chronicle.slice(0, 4)) {
+      const verdict = e.won ? ' WON' : 'LOST'
+      const line = `${verdict}   score ${String(e.score).padStart(5)}   ${String(e.gold).padStart(4)} gold   ${e.cities}/7 cities   day ${e.day}`
+      center(ctx, line, cx, y, "14px 'Courier New', monospace", e.won ? '#e0d18a' : '#8a8a94')
+      y += 21
+    }
   }
 }
 
