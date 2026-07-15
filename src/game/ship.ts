@@ -35,15 +35,32 @@ export function findMooring(map: GameMap): Ship {
 /**
  * Sail: same axis-sliding movement as walking, but the water is the road —
  * only ocean tiles are passable, so the ship can never run aground.
+ * `windMul` scales the helm speed (tailwind > 1, headwind < 1); `driftX/Y`
+ * is uncommanded velocity (a storm shoving the hull) applied even when the
+ * player gives no input.
  */
-export function moveShip(map: GameMap, ship: Ship, dx: number, dy: number, dt: number): void {
-  if (dx === 0 && dy === 0) return
-  const len = Math.hypot(dx, dy)
-  dx /= len
-  dy /= len
-  const step = SHIP_SPEED * dt
-  const nx = ship.x + dx * step
-  const ny = ship.y + dy * step
+export function moveShip(
+  map: GameMap,
+  ship: Ship,
+  dx: number,
+  dy: number,
+  dt: number,
+  windMul = 1,
+  driftX = 0,
+  driftY = 0,
+): void {
+  let vx = 0
+  let vy = 0
+  if (dx !== 0 || dy !== 0) {
+    const len = Math.hypot(dx, dy)
+    vx = (dx / len) * SHIP_SPEED * windMul
+    vy = (dy / len) * SHIP_SPEED * windMul
+  }
+  vx += driftX
+  vy += driftY
+  if (vx === 0 && vy === 0) return
+  const nx = ship.x + vx * dt
+  const ny = ship.y + vy * dt
   if (isOcean(map, nx, ship.y)) ship.x = nx
   if (isOcean(map, ship.x, ny)) ship.y = ny
 }

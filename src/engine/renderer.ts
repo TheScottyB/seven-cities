@@ -1,4 +1,5 @@
 import { GameMap } from '../world/mapgen'
+import { stormCenter, type Weather } from '../game/weather'
 import { Fog, isSeen } from '../world/fog'
 import { Explorer } from '../game/explorer'
 import type { Village } from '../world/villages'
@@ -104,6 +105,49 @@ export function renderWorld(
   if (sailing) drawShip(ctx, sx, sy)
   else if (underfoot === TILE.RIVER) drawCanoe(ctx, sx, sy)
   else drawExplorer(ctx, sx, sy)
+}
+
+/** Roaming storm cells: a dark squall with animated rain, once its waters are charted. */
+export function renderStorms(
+  rc: RenderCtx,
+  cam: Camera,
+  weather: Weather,
+  t: number,
+  map: GameMap,
+  fog: Fog,
+): void {
+  const { ctx, viewW, viewH } = rc
+  for (const s of weather.storms) {
+    const c = stormCenter(s, t, map.width, map.height)
+    const cx = Math.max(0, Math.min(map.width - 1, Math.floor(c.x)))
+    const cy = Math.max(0, Math.min(map.height - 1, Math.floor(c.y)))
+    if (!isSeen(fog, cx, cy)) continue
+    const p = worldToScreen(cam, viewW, viewH, c.x, c.y)
+    const rp = s.r * TILE_PX
+    if (p.sx < -rp || p.sy < -rp || p.sx > viewW + rp || p.sy > viewH + rp) continue
+    // squall shadow
+    const grad = ctx.createRadialGradient(p.sx, p.sy, rp * 0.2, p.sx, p.sy, rp)
+    grad.addColorStop(0, 'rgba(16,20,38,0.55)')
+    grad.addColorStop(1, 'rgba(16,20,38,0)')
+    ctx.fillStyle = grad
+    ctx.beginPath()
+    ctx.arc(p.sx, p.sy, rp, 0, Math.PI * 2)
+    ctx.fill()
+    // slanted rain, animated
+    ctx.strokeStyle = 'rgba(210,222,240,0.35)'
+    ctx.lineWidth = 1
+    const anim = (performance.now() / 60) % TILE_PX
+    ctx.beginPath()
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2
+      const rr = rp * (0.25 + ((i * 37) % 60) / 100)
+      const x = p.sx + Math.cos(a) * rr
+      const y = p.sy + Math.sin(a) * rr + anim
+      ctx.moveTo(x, y)
+      ctx.lineTo(x - 3, y + 6)
+    }
+    ctx.stroke()
+  }
 }
 
 /** Small charted-territory minimap in the corner. */

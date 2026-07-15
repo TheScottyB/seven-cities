@@ -4,6 +4,7 @@ import { makeFog, reveal } from './world/fog'
 import { makeState, tick, score, GameStatus } from './game/state'
 import { makeExplorer, moveExplorer } from './game/explorer'
 import { findMooring, moveShip, landingSpots, type Ship } from './game/ship'
+import { makeWeather, windAt, windFactor, stormAt, applyStorm, type Weather } from './game/weather'
 import { discoverVillage, resolveTrade, resolveGift, resolveAttack } from './game/encounter'
 import { defaultOutfit, adjustOutfit, remainingBudget, type Outfit } from './game/outfit'
 import { serializeSave, deserializeSave, unpackBits, type SaveData } from './game/save'
@@ -17,8 +18,8 @@ import { buildTileset } from './art/tileset'
 import { Input } from './engine/input'
 import { centerCamera, type Camera } from './engine/camera'
 import { startLoop } from './engine/loop'
-import { renderWorld, renderMinimap, type RenderCtx } from './engine/renderer'
-import { drawHud } from './ui/hud'
+import { renderWorld, renderMinimap, renderStorms, type RenderCtx } from './engine/renderer'
+import { drawHud, drawWindIndicator } from './ui/hud'
 import { drawStartScreen, drawOutfitScreen, drawEncounter, drawGameOver, drawResult } from './ui/panels'
 import { seedFromString } from './world/rng'
 
@@ -53,6 +54,7 @@ interface World {
   explorer: ReturnType<typeof makeExplorer>
   ship: Ship
   sailing: boolean
+  weather: Weather
   cam: Camera
 }
 
@@ -76,7 +78,8 @@ function newWorld(seedStr: string): World {
   reveal(fog, Math.floor(explorer.x), Math.floor(explorer.y), REVEAL_RADIUS)
   return {
     seedStr, map, villages, fog, state: makeState(), explorer,
-    ship, sailing: false, cam: { x: explorer.x, y: explorer.y },
+    ship, sailing: false, weather: makeWeather(seed, map),
+    cam: { x: explorer.x, y: explorer.y },
   }
 }
 
@@ -244,8 +247,20 @@ function update(dt: number) {
   } else {
     const { dx, dy } = input.axis()
     if (world.sailing) {
-      // while sailing, the explorer IS the ship
-      moveShip(map, explorer, dx, dy, sdt)
+      // while sailing, the explorer IS the ship — and the sky has opinions
+      const wind = windAt(world.weather, state.elapsed)
+      const inStorm = stormAt(world.weather, state.elapsed, map.width, map.height, explorer.x, explorer.y)
+      let mul = windFactor(wind.angle, wind.strength, dx, dy)
+      let drX = 0
+      let drY = 0
+      if (inStorm) {
+        mul *= 0.7 // the helm barely answers
+        drX = Math.sin(state.elapsed * 2.1 + explorer.y) * 3
+        drY = Math.cos(state.elapsed * 1.7 + explorer.x) * 3
+        applyStorm(state, sdt)
+        if (flash.t <= 0) flash = { text: 'A storm batters the ship — crew overboard!', t: 1.2 }
+      }
+      moveShip(map, explorer, dx, dy, sdt, mul, drX, drY)
       world.ship.x = explorer.x
       world.ship.y = explorer.y
     } else {
@@ -361,6 +376,11 @@ function render() {
   }
 
   renderWorld(rc, world.cam, world.map, world.fog, world.villages, world.explorer, world.ship, world.sailing)
+  renderStorms(rc, world.cam, world.weather, world.state.elapsed, world.map, world.fog)
+  if (world.sailing) {
+    const wind = windAt(world.weather, world.state.elapsed)
+    drawWindIndicator(ctx, canvas.width, wind.angle, wind.strength)
+  }
   renderMinimap(rc, world.map, world.fog, world.explorer, world.villages, world.ship)
   drawHud(ctx, canvas.width, world.state)
 
