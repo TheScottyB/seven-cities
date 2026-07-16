@@ -11,6 +11,8 @@ import { makeScene, tickScene, type WalkinScene } from './game/walkin'
 import { makeCareer, bankGold, budgetFor, rankIndex, type Career } from './game/career'
 import { direct, ambienceFor, type AudioSnapshot, type GameEvent } from './audio/director'
 import { AudioPlayer, synthesize } from './audio/player'
+import { musicFor, buildTheme, type ThemeId } from './audio/score'
+import { scheduleThemeWindow } from './audio/music'
 import { drawWalkin } from './ui/walkin'
 import { defaultOutfit, adjustOutfit, remainingBudget, type Outfit } from './game/outfit'
 import { serializeSave, deserializeSave, unpackBits, type SaveData } from './game/save'
@@ -128,6 +130,7 @@ function pumpAudio(): void {
   const snap = snapshot()
   if (prevSnap) player.play(direct(prevSnap, snap, audioEvents))
   else player.play([{ id: ambienceFor(snap) }])
+  player.setTheme(musicFor(snap))
   prevSnap = snap
   audioEvents = []
 }
@@ -718,6 +721,20 @@ if (import.meta.env.DEV) {
         return Math.sqrt(s1 * s1 + s2 * s2 - c * s1 * s2) / n
       }
       return { rms, e660: goertzel(660), e880: goertzel(880), e120: goertzel(120), e3000: goertzel(3000) }
+    },
+    // render the opening seconds of a score theme offline and measure it
+    renderTheme: async (id: string, seconds = 4) => {
+      const off = new OfflineAudioContext(1, Math.floor(seconds * 44100), 44100)
+      scheduleThemeWindow(off, off.destination, buildTheme(id as ThemeId), 0, 0, seconds)
+      const buf = await off.startRendering()
+      const d = buf.getChannelData(0)
+      let sum = 0
+      let peak = 0
+      for (let i = 0; i < d.length; i++) {
+        sum += d[i] * d[i]
+        peak = Math.max(peak, Math.abs(d[i]))
+      }
+      return { rms: Math.sqrt(sum / d.length), peak }
     },
     setSeed: (s: string) => {
       world = newWorld(s)

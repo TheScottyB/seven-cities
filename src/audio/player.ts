@@ -1,4 +1,6 @@
 import type { AudioCue, CueId } from './director'
+import { buildTheme, type Theme, type ThemeId } from './score'
+import { scheduleThemeWindow } from './music'
 
 /**
  * Thin WebAudio adapter. All decisions live in the director; this file only
@@ -156,7 +158,8 @@ const AMBIENTS: Record<string, { hz: number; q: number; gain: number; lfoHz: num
 }
 
 export interface CueLogEntry {
-  id: CueId
+  /** a CueId, or a music marker like 'music-title' / 'music-none' */
+  id: string
   at: number
 }
 
@@ -169,6 +172,12 @@ export class AudioPlayer {
   private muted = false
   private log: CueLogEntry[] = []
   private chirpTimer: ReturnType<typeof setInterval> | null = null
+  private theme: Theme | null = null
+  private themeId: ThemeId | null = null
+  private themeGain: GainNode | null = null
+  private themeStart = 0
+  private themeUntil = 0
+  private themeTimer: ReturnType<typeof setInterval> | null = null
 
   /** Call from a user-gesture handler; browsers gate audio until then. */
   unlock(): void {
@@ -190,9 +199,57 @@ export class AudioPlayer {
       comp.release.value = 0.25
       this.master.connect(comp)
       comp.connect(this.ctx.destination)
+      // if a theme was chosen while audio was still locked, strike it up now
+      const pending = this.themeId
+      this.themeId = null
+      this.theme = null
+      if (pending) this.setTheme(pending)
     } catch {
       this.ctx = null // no audio — the game plays silent
     }
+  }
+
+  /**
+   * Start, switch, or stop the score. Idempotent per theme; crossfades on
+   * change. Called every frame with musicFor(snapshot).
+   */
+  setTheme(id: ThemeId | null): void {
+    if (id === this.themeId) return
+    this.themeId = id
+    const marker = id ? `music-${id}` : 'music-none'
+    if (this.log[this.log.length - 1]?.id !== marker) this.log.push({ id: marker, at: Date.now() })
+    if (this.themeTimer) {
+      clearInterval(this.themeTimer)
+      this.themeTimer = null
+    }
+    if (this.themeGain && this.ctx) {
+      const old = this.themeGain
+      old.gain.setTargetAtTime(0, this.ctx.currentTime, 0.4)
+      setTimeout(() => old.disconnect(), 2000)
+      this.themeGain = null
+    }
+    this.theme = id ? buildTheme(id) : null
+    if (!this.ctx || !this.master || !this.theme) return
+    const g = this.ctx.createGain()
+    g.gain.value = 0
+    g.gain.setTargetAtTime(0.55, this.ctx.currentTime, 0.6)
+    g.connect(this.master)
+    this.themeGain = g
+    this.themeStart = this.ctx.currentTime + 0.15
+    this.themeUntil = this.themeStart
+    const pump = () => {
+      if (!this.ctx || !this.themeGain || !this.theme) return
+      this.themeUntil = scheduleThemeWindow(
+        this.ctx,
+        this.themeGain,
+        this.theme,
+        this.themeStart,
+        Math.max(this.themeUntil, this.ctx.currentTime),
+        this.ctx.currentTime + 1.2,
+      )
+    }
+    pump()
+    this.themeTimer = setInterval(pump, 300)
   }
 
   toggleMute(): boolean {
