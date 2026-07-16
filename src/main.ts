@@ -27,7 +27,7 @@ import {
 import { buildTileset } from './art/tileset'
 import { Input } from './engine/input'
 import { centerCamera, zoomFor, type Camera } from './engine/camera'
-import { beginHits, hitAt } from './ui/hit'
+import { beginHits, hitAt, setHover } from './ui/hit'
 import { startLoop } from './engine/loop'
 import { renderWorld, renderMinimap, renderStorms, type RenderCtx } from './engine/renderer'
 import { drawHud, drawWindIndicator } from './ui/hud'
@@ -108,7 +108,9 @@ canvas.addEventListener('click', (e) => {
 })
 canvas.addEventListener('mousemove', (e) => {
   const p = canvasPoint(e)
-  canvas.style.cursor = hitAt(p.x, p.y) ? 'pointer' : 'default'
+  const id = hitAt(p.x, p.y)
+  setHover(id)
+  canvas.style.cursor = id ? 'pointer' : 'default'
 })
 
 function snapshot(): AudioSnapshot {
@@ -643,7 +645,7 @@ function render() {
     return
   }
   if (screen === 'spain') {
-    drawSpainScreen(ctx, canvas.width, canvas.height, career, world.state, justBanked, promoted)
+    drawSpainScreen(ctx, canvas.width, canvas.height, career, world.state, justBanked, promoted, performance.now() / 1000)
     return
   }
   if (screen === 'walkin' && walkin && walkinVillage) {
@@ -720,7 +722,8 @@ function render() {
 
   // the banner yields while a decision panel is up — no overlapping chrome
   if (flash.t > 0 && screen === 'playing' && !encounter) drawResult(ctx, canvas.width, canvas.height, flash.text, hudH + 10)
-  if (encounter) drawEncounter(ctx, canvas.width, canvas.height, encounter, world.state.goods, world.state.fear)
+  if (encounter)
+    drawEncounter(ctx, canvas.width, canvas.height, encounter, world.state.goods, world.state.fear, performance.now() / 1000)
 
   if (screen === 'over') {
     const won = world.state.status === GameStatus.Won

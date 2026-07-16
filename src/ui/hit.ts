@@ -30,3 +30,14 @@ export function hitAt(x: number, y: number): string | null {
   }
   return null
 }
+
+// The pointer's current rest: draw code brightens whatever it hovers.
+let hover: string | null = null
+
+export function setHover(id: string | null): void {
+  hover = id
+}
+
+export function hovered(id: string): boolean {
+  return hover === id
+}

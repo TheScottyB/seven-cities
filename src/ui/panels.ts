@@ -4,14 +4,15 @@ import { TRADE_GOODS, GIFT_GOODS, effectiveTemperament } from '../game/encounter
 import { bestScore, type ChronicleEntry } from '../game/chronicle'
 import { rankTitle, rankIndex, budgetFor, RANKS, type Career } from '../game/career'
 import { dailyAppetite, type GameState } from '../game/state'
-import { addHit } from './hit'
+import { addHit, hovered } from './hit'
+import { drawChief, drawIdol, drawShip, drawVillager, drawShadow } from '../art/sprites'
 
-function panel(ctx: CanvasRenderingContext2D, viewW: number, viewH: number, w: number, h: number) {
+function panel(ctx: CanvasRenderingContext2D, viewW: number, viewH: number, w: number, h: number, border = '#f4c430') {
   const x = (viewW - w) / 2
   const y = (viewH - h) / 2
   ctx.fillStyle = 'rgba(10,12,22,0.94)'
   ctx.fillRect(x, y, w, h)
-  ctx.strokeStyle = '#f4c430'
+  ctx.strokeStyle = border
   ctx.lineWidth = 2
   ctx.strokeRect(x, y, w, h)
   return { x, y }
@@ -288,26 +289,32 @@ export function drawSpainScreen(
   state: GameState,
   justBanked: number,
   promoted: boolean,
+  t = 0,
 ): void {
   ctx.fillStyle = '#0a0a12'
   ctx.fillRect(0, 0, viewW, viewH)
   drawFrame(ctx, viewW, viewH)
   const cx = viewW / 2
-  drawCrest(ctx, cx, viewH / 2 - 188, 42)
+  drawCrest(ctx, cx, viewH / 2 - 208, 42)
   const title = rankTitle(career.banked)
-  center(ctx, 'SPAIN — THE COURT OF THE CROWN', cx, viewH / 2 - 150, "bold 32px 'Courier New', monospace", '#f4c430')
+  center(ctx, 'SPAIN — THE COURT OF THE CROWN', cx, viewH / 2 - 170, "bold 32px 'Courier New', monospace", '#f4c430')
   center(
     ctx,
     `Voyage ${career.voyages} complete. You banked ${justBanked} gold with the Crown.`,
     cx,
-    viewH / 2 - 108,
+    viewH / 2 - 128,
     "16px 'Courier New', monospace",
     '#e0d18a',
   )
   if (promoted) {
-    center(ctx, `The Crown elevates you: ${title.toUpperCase()}!`, cx, viewH / 2 - 74, "bold 20px 'Courier New', monospace", '#7fd17f')
+    // the moment glows: a new title from the Crown's own hand
+    ctx.save()
+    ctx.shadowColor = 'rgba(127,209,127,0.9)'
+    ctx.shadowBlur = 10 + 6 * Math.sin(t * 4)
+    center(ctx, `The Crown elevates you: ${title.toUpperCase()}!`, cx, viewH / 2 - 94, "bold 20px 'Courier New', monospace", '#7fd17f')
+    ctx.restore()
   } else {
-    center(ctx, `Your rank: ${title}`, cx, viewH / 2 - 74, "18px 'Courier New', monospace", '#c9c9d2')
+    center(ctx, `Your rank: ${title}`, cx, viewH / 2 - 94, "18px 'Courier New', monospace", '#c9c9d2')
   }
   const idx = rankIndex(career.banked)
   const next = idx < RANKS.length - 1 ? RANKS[idx + 1] : null
@@ -315,18 +322,80 @@ export function drawSpainScreen(
     `Treasury: ${career.banked} gold banked`,
     `Cities of Gold found: ${state.citiesFound}/7    Villages contacted: ${state.villagesContacted}`,
     `Word of your deeds — fear among the peoples: ${Math.floor(state.fear)}`,
-    next ? `Next title (${next.title}) at ${next.min} gold banked` : 'No higher title remains',
-    '',
-    `The Crown will fund your next voyage: ${budgetFor(career.banked)} gold`,
   ]
-  let y = viewH / 2 - 30
+  let y = viewH / 2 - 52
   for (const l of lines) {
     center(ctx, l, cx, y, "15px 'Courier New', monospace", '#9a9aa6')
     y += 26
   }
+
+  // the road to the next title, drawn as a bar the eye can measure
+  if (next) {
+    const prevMin = RANKS[idx].min
+    const frac = Math.max(0, Math.min(1, (career.banked - prevMin) / (next.min - prevMin)))
+    const bw = 320
+    const bx = cx - bw / 2
+    center(ctx, `Next title: ${next.title} at ${next.min} gold`, cx, y + 6, "14px 'Courier New', monospace", '#8a8a94')
+    ctx.fillStyle = '#22222c'
+    ctx.fillRect(bx, y + 14, bw, 10)
+    ctx.fillStyle = '#c9a94f'
+    ctx.fillRect(bx, y + 14, bw * frac, 10)
+    ctx.strokeStyle = 'rgba(244,196,48,0.5)'
+    ctx.lineWidth = 1
+    ctx.strokeRect(bx + 0.5, y + 14.5, bw - 1, 9)
+  } else {
+    center(ctx, 'No higher title remains — the Crown has run out of honors', cx, y + 12, "14px 'Courier New', monospace", '#c9a94f')
+  }
+  y += 44
+  center(ctx, `The Crown will fund your next voyage: ${budgetFor(career.banked)} gold`, cx, y + 6, "15px 'Courier New', monospace", '#9a9aa6')
+
   const go = 'Press ENTER to outfit your next voyage'
-  center(ctx, go, cx, y + 22, "16px 'Courier New', monospace", '#7fd17f')
-  centerHit(ctx, 'spain-go', go, cx, y + 22, "16px 'Courier New', monospace")
+  center(ctx, go, cx, y + 40, "16px 'Courier New', monospace", hovered('spain-go') ? '#a8f0a8' : '#7fd17f')
+  centerHit(ctx, 'spain-go', go, cx, y + 40, "16px 'Courier New', monospace")
+
+  // --- the harbor of Palos, waiting below the court -------------------------
+  const hy = viewH - 132 // waterline
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(24, hy - 60, viewW - 48, 160)
+  ctx.clip()
+  // evening water
+  ctx.fillStyle = '#12233c'
+  ctx.fillRect(24, hy, viewW - 48, 108)
+  for (let row = 0; row < 4; row++) {
+    const wy = hy + 12 + row * 22
+    ctx.fillStyle = `rgba(120,160,210,${0.16 - row * 0.03})`
+    for (let i = 0; i < 22; i++) {
+      const phase = (t * (14 + row * 4) + i * 53 + row * 31) % (viewW - 48)
+      ctx.fillRect(24 + phase, wy + Math.sin(t * 1.4 + i) * 1.5, 14 - row * 2, 1)
+    }
+  }
+  // the caravel rides at anchor, sails furled for the night ashore
+  ctx.save()
+  ctx.translate(cx + 150, hy + 26)
+  ctx.scale(3.4, 3.4)
+  drawShip(ctx, 0, 0, t)
+  ctx.restore()
+  // the quay: dark planks and pilings, the Crown's gold stacked upon it
+  ctx.fillStyle = '#2e2015'
+  ctx.fillRect(24, hy - 14, Math.min(viewW * 0.38, 420), 20)
+  ctx.fillStyle = 'rgba(0,0,0,0.35)'
+  for (let px = 44; px < Math.min(viewW * 0.38, 420); px += 34) ctx.fillRect(px, hy - 14, 2, 20)
+  ctx.fillStyle = '#241a10'
+  for (const px of [60, 180, 300]) ctx.fillRect(px, hy + 4, 8, 26)
+  // banked treasure on the dock: one chest per rank of wealth
+  const stacks = Math.min(7, 1 + Math.floor(career.banked / 600))
+  for (let s = 0; s < stacks; s++) {
+    const sx0 = 70 + s * 40
+    const coins = 3 + ((s * 7) % 3)
+    for (let c = 0; c < coins; c++) {
+      ctx.fillStyle = c === coins - 1 ? '#ffe27a' : '#c9a94f'
+      ctx.beginPath()
+      ctx.ellipse(sx0, hy - 18 - c * 5, 9, 3.4, 0, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+  ctx.restore()
 }
 
 export function drawEncounter(
@@ -336,45 +405,95 @@ export function drawEncounter(
   v: Village,
   goods: number,
   fear = 0,
+  t = 0,
 ): void {
-  const w = Math.min(580, viewW - 24)
-  const { x, y } = panel(ctx, viewW, viewH, w, 268)
+  const eff = effectiveTemperament(v.temperament, fear)
+  const hostile = eff <= 0.33
+  const w = Math.min(600, viewW - 24)
+  const H = 332
+  const { x, y } = panel(ctx, viewW, viewH, w, H, hostile ? '#c0504d' : '#f4c430')
   const cx = viewW / 2
   const title = v.golden ? 'A CITY OF GOLD!' : 'A native village'
-  center(ctx, title, cx, y + 44, "bold 26px 'Courier New', monospace", v.golden ? '#f4c430' : '#e0d18a')
+  center(ctx, title, cx, y + 40, "bold 26px 'Courier New', monospace", v.golden ? '#f4c430' : '#e0d18a')
 
-  const eff = effectiveTemperament(v.temperament, fear)
+  // the delegation: the chief comes out to meet you, people at his back
+  const gy = y + 58
+  const gh = 76
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(x + 14, gy, w - 28, gh)
+  ctx.clip()
+  ctx.fillStyle = hostile ? '#43302a' : eff > 0.66 ? '#3d5f32' : '#44523a'
+  ctx.fillRect(x + 14, gy, w - 28, gh)
+  const rng0 = ((v.x * 73856093) ^ (v.y * 19349663)) >>> 0
+  ctx.fillStyle = 'rgba(20,28,16,0.5)'
+  for (let i = 0; i < 40; i++) {
+    const hx = x + 14 + ((rng0 >> (i % 24)) * 31 + i * 137) % (w - 28)
+    const hy = gy + ((rng0 >> (i % 16)) * 17 + i * 61) % gh
+    ctx.fillRect(hx, hy, 2, 2)
+  }
+  const base = gy + gh - 24
+  const villagerCount = Math.max(2, Math.min(6, Math.round(v.population / 90)))
+  for (let i = 0; i < villagerCount; i++) {
+    const side = i % 2 ? 1 : -1
+    const off = (Math.floor(i / 2) + 1) * 46 + 38
+    const bob = Math.sin(t * (hostile ? 8 : 2.4) + i * 1.4) * (hostile ? 2 : 1)
+    drawShadow(ctx, cx + side * off, base + 8, 9)
+    drawVillager(ctx, cx + side * off, base + bob, 30, i + v.x)
+  }
+  if (v.golden) drawIdol(ctx, cx + 42, base + 2, 34, t)
+  drawShadow(ctx, cx, base + 10, 12)
+  drawChief(ctx, cx, base, 36)
+  ctx.restore()
+  ctx.strokeStyle = 'rgba(244,196,48,0.25)'
+  ctx.lineWidth = 1
+  ctx.strokeRect(x + 14.5, gy + 0.5, w - 29, gh)
+
   const mood = eff > 0.66 ? 'friendly' : eff > 0.33 ? 'wary' : 'hostile'
-  center(
-    ctx,
-    `They appear ${mood}. (pop. ~${v.population})   Your goods: ${Math.floor(goods)}`,
-    cx,
-    y + 76,
-    "15px 'Courier New', monospace",
-    '#9a9aa6',
-  )
-
-  const noGoods = goods <= 0
-  const opts: [string, string, boolean][] = [
-    ['1', `Trade  — goods for gold & food  (uses ${TRADE_GOODS} goods)`, noGoods],
-    ['2', `Gift   — earn goodwill & rumors  (uses ${GIFT_GOODS} goods)`, noGoods],
-    ['3', 'Attack — seize their gold by force  (risks crew)', false],
-  ]
+  const moodColor = eff > 0.66 ? '#7fd17f' : eff > 0.33 ? '#e0b34f' : '#c0504d'
+  ctx.font = "15px 'Courier New', monospace"
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#9a9aa6'
+  const pre = `They appear `
+  const post = `. (pop. ~${v.population})   Your goods: ${Math.floor(goods)}`
+  const total = ctx.measureText(pre + mood + post).width
   ctx.textAlign = 'left'
-  let ly = y + 122
-  for (const [k, label, disabled] of opts) {
-    ctx.font = "bold 18px 'Courier New', monospace"
-    ctx.fillStyle = disabled ? '#5a5a64' : '#f4c430'
-    ctx.fillText(`[${k}]`, x + 32, ly)
-    ctx.fillStyle = disabled ? '#5a5a64' : '#d7d7de'
-    ctx.font = "15px 'Courier New', monospace"
-    ctx.fillText(label + (disabled ? '  — no goods!' : ''), x + 76, ly)
-    if (!disabled) addHit(`enc-${k}`, x + 24, ly - 20, w - 48, 30)
+  let mx = cx - total / 2
+  ctx.fillText(pre, mx, y + 158)
+  mx += ctx.measureText(pre).width
+  ctx.fillStyle = moodColor
+  ctx.fillText(mood, mx, y + 158)
+  mx += ctx.measureText(mood).width
+  ctx.fillStyle = '#9a9aa6'
+  ctx.fillText(post, mx, y + 158)
+
+  // what the mood means for the deal on the table
+  const terms = eff > 0.66 ? 'generous terms' : eff > 0.33 ? 'they bargain hard' : 'they want you gone'
+  const noGoods = goods <= 0
+  const opts: [string, string, string, boolean][] = [
+    ['1', 'Trade', `goods for gold & food (${TRADE_GOODS}) — ${terms}`, noGoods],
+    ['2', 'Gift', `earn goodwill & rumors (${GIFT_GOODS} goods)`, noGoods],
+    ['3', 'Attack', `seize their gold (risks crew${v.population > 250 ? ', many defenders' : ''})`, false],
+  ]
+  let ly = y + 192
+  for (const [k, verb, desc, disabled] of opts) {
+    const hov = !disabled && hovered(`enc-${k}`)
+    if (hov) {
+      ctx.fillStyle = 'rgba(244,196,48,0.09)'
+      ctx.fillRect(x + 20, ly - 20, w - 40, 30)
+    }
+    ctx.font = "bold 17px 'Courier New', monospace"
+    ctx.fillStyle = disabled ? '#5a5a64' : hov ? '#ffe27a' : '#f4c430'
+    ctx.fillText(`[${k}] ${verb}`, x + 32, ly)
+    ctx.fillStyle = disabled ? '#5a5a64' : hov ? '#f0f0f4' : '#c9c9d2'
+    ctx.font = "14px 'Courier New', monospace"
+    ctx.fillText(desc + (disabled ? '  — no goods!' : ''), x + 150, ly)
+    if (!disabled) addHit(`enc-${k}`, x + 20, ly - 20, w - 40, 30)
     ly += 34
   }
   const esc = 'Esc — walk away'
-  center(ctx, esc, cx, y + 244, "14px 'Courier New', monospace", '#7a7a86')
-  centerHit(ctx, 'enc-esc', esc, cx, y + 244, "14px 'Courier New', monospace")
+  center(ctx, esc, cx, y + H - 22, "14px 'Courier New', monospace", hovered('enc-esc') ? '#c9c9d2' : '#7a7a86')
+  centerHit(ctx, 'enc-esc', esc, cx, y + H - 22, "14px 'Courier New', monospace")
 }
 
 /**

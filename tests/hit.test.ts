@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { beginHits, addHit, hitAt } from '../src/ui/hit'
+import { beginHits, addHit, hitAt, setHover, hovered } from '../src/ui/hit'
 
 describe('canvas hit regions', () => {
   it('finds the region under a point, or nothing', () => {
@@ -16,6 +16,14 @@ describe('canvas hit regions', () => {
     addHit('over', 100, 100, 50, 50)
     expect(hitAt(120, 120)).toBe('over')
     expect(hitAt(10, 10)).toBe('under')
+  })
+
+  it('hover tracks the pointer and clears when it leaves', () => {
+    setHover('enc-1')
+    expect(hovered('enc-1')).toBe(true)
+    expect(hovered('enc-2')).toBe(false)
+    setHover(null)
+    expect(hovered('enc-1')).toBe(false)
   })
 
   it('beginHits clears the previous frame completely', () => {
