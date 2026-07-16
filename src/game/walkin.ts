@@ -17,6 +17,13 @@ export interface Villager {
   appeased: boolean
 }
 
+/** Decorative village furniture — never blocks movement. */
+export interface WalkinProp {
+  kind: 'fire' | 'pots' | 'rack' | 'crop'
+  x: number
+  y: number
+}
+
 export interface WalkinScene {
   w: number
   h: number
@@ -26,6 +33,11 @@ export interface WalkinScene {
   py: number
   villagers: Villager[]
   hostile: boolean
+  /** effective temperament 0..1 — the renderer tints the light with it */
+  mood: number
+  /** a City of Gold dresses its roofs accordingly */
+  golden: boolean
+  props: WalkinProp[]
   caught: number
   t: number
   rng: Rng
@@ -63,6 +75,23 @@ export function makeScene(v: Village, fear: number): WalkinScene {
       appeased: false,
     })
   }
+
+  // village furniture: decorative, deterministic, and always clear of the
+  // center path so the way to the chief stays legible
+  const props: WalkinProp[] = []
+  const clearOfPath = (x: number) => Math.abs(x - w / 2) >= 1.6
+  props.push({ kind: 'fire', x: w / 2 + 2.1, y: h / 2 + 0.3 }) // the hearth at the plaza's edge
+  huts.slice(0, 3).forEach(([hx, hy], i) => {
+    const kind = (['pots', 'rack', 'pots'] as const)[i]
+    const px = hx + (hx < w / 2 ? 1.4 : -1.1)
+    const py = hy + 1.1
+    if (clearOfPath(px) && py < h - 1.2) props.push({ kind, x: px, y: py })
+  })
+  // the maize patch takes whichever lower corner the huts left open
+  const cropX = huts.some(([hx, hy]) => hx < 4 && hy > h - 5) ? w - 2.6 : 2.2
+  props.push({ kind: 'crop', x: cropX, y: h - 2.4 })
+
+  const eff = effectiveTemperament(v.temperament, fear)
   return {
     w,
     h,
@@ -71,7 +100,10 @@ export function makeScene(v: Village, fear: number): WalkinScene {
     px: w / 2,
     py: h - 1.2,
     villagers,
-    hostile: effectiveTemperament(v.temperament, fear) < 0.3,
+    hostile: eff < 0.3,
+    mood: eff,
+    golden: v.golden,
+    props,
     caught: 0,
     t: 0,
     rng,

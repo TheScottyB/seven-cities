@@ -653,7 +653,7 @@ function render() {
       : eff > 0.66
         ? 'The people watch you with open curiosity.'
         : 'The people keep their distance, wary of the stranger.'
-    drawWalkin(ctx, canvas.width, canvas.height, walkin, tileset, note)
+    drawWalkin(ctx, canvas.width, canvas.height, walkin, tileset, note, performance.now() / 1000)
     if (flash.t > 0) drawResult(ctx, canvas.width, canvas.height, flash.text, 12)
     return
   }

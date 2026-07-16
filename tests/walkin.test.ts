@@ -64,6 +64,24 @@ test('a hostile crowd drives off a dawdling intruder', () => {
   expect(s.caught).toBe(3)
 })
 
+test('the scene knows a City of Gold and the crowd\'s mood', () => {
+  expect(makeScene(village({ golden: true }), 0).golden).toBe(true)
+  expect(makeScene(village(), 0).golden).toBe(false)
+  expect(makeScene(village({ temperament: 0.8 }), 0).mood).toBeCloseTo(0.8)
+})
+
+test('village furniture is deterministic and keeps off the center path', () => {
+  const a = makeScene(village(), 0)
+  const b = makeScene(village(), 0)
+  expect(a.props).toEqual(b.props)
+  expect(a.props.some((p) => p.kind === 'fire')).toBe(true)
+  expect(a.props.some((p) => p.kind === 'crop')).toBe(true)
+  for (const p of a.props) {
+    expect(Math.abs(p.x - a.w / 2)).toBeGreaterThanOrEqual(1.6)
+    expect(isBlockedAt(a, p.x, p.y)).toBe(false) // decoration never traps the player
+  }
+})
+
 test('huts block movement', () => {
   const s = makeScene(village(), 0)
   expect(s.huts.length).toBeGreaterThan(0)

@@ -55,9 +55,12 @@ export function drawCanoe(g: CanvasRenderingContext2D, cx: number, cy: number): 
   g.stroke()
 }
 
-/** A villager going about their day — scale is walk-in-scene pixels. */
-export function drawVillager(g: CanvasRenderingContext2D, cx: number, cy: number, sz: number): void {
-  g.fillStyle = '#7a4a2e'
+/** what the villagers wear: undyed hide, ochre, indigo, madder red, walnut */
+const VILLAGER_GARB = ['#7a4a2e', '#9a6a2e', '#3a5a7a', '#8a3a32', '#5a4a30']
+
+/** A villager going about their day — `variant` picks their clothing. */
+export function drawVillager(g: CanvasRenderingContext2D, cx: number, cy: number, sz: number, variant = 0): void {
+  g.fillStyle = VILLAGER_GARB[((variant % VILLAGER_GARB.length) + VILLAGER_GARB.length) % VILLAGER_GARB.length]
   g.fillRect(cx - sz * 0.14, cy - sz * 0.1, sz * 0.28, sz * 0.34)
   g.fillStyle = '#c88a5a'
   g.beginPath()
@@ -86,19 +89,129 @@ export function drawChief(g: CanvasRenderingContext2D, cx: number, cy: number, s
   }
 }
 
-/** A single hut for the walk-in scene. */
-export function drawHut(g: CanvasRenderingContext2D, cx: number, cy: number, sz: number): void {
+/** A single hut for the walk-in scene; a City of Gold gilds its roof. */
+export function drawHut(g: CanvasRenderingContext2D, cx: number, cy: number, sz: number, roof = '#7a4a24'): void {
   g.fillStyle = '#5a3a1e'
   g.fillRect(cx - sz * 0.4, cy - sz * 0.05, sz * 0.8, sz * 0.42)
-  g.fillStyle = '#7a4a24'
+  g.fillStyle = roof
   g.beginPath()
   g.moveTo(cx - sz * 0.48, cy - sz * 0.02)
   g.lineTo(cx, cy - sz * 0.45)
   g.lineTo(cx + sz * 0.48, cy - sz * 0.02)
   g.closePath()
   g.fill()
+  // thatch/shingle lines along the roof pitch
+  g.strokeStyle = 'rgba(20,12,6,0.25)'
+  g.lineWidth = 1
+  g.beginPath()
+  g.moveTo(cx - sz * 0.3, cy - sz * 0.13)
+  g.lineTo(cx + sz * 0.3, cy - sz * 0.13)
+  g.moveTo(cx - sz * 0.17, cy - sz * 0.27)
+  g.lineTo(cx + sz * 0.17, cy - sz * 0.27)
+  g.stroke()
   g.fillStyle = '#2a1c10'
   g.fillRect(cx - sz * 0.1, cy + sz * 0.12, sz * 0.2, sz * 0.25)
+}
+
+/** The plaza hearth: stone ring, flickering flame, a thread of smoke. */
+export function drawFire(g: CanvasRenderingContext2D, cx: number, cy: number, sz: number, t: number): void {
+  g.fillStyle = '#3a2418'
+  g.beginPath()
+  g.ellipse(cx, cy + sz * 0.06, sz * 0.26, sz * 0.12, 0, 0, Math.PI * 2)
+  g.fill()
+  g.fillStyle = '#6a6a72'
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2
+    g.fillRect(cx + Math.cos(a) * sz * 0.3 - 1, cy + sz * 0.05 + Math.sin(a) * sz * 0.15 - 1, 3, 3)
+  }
+  // three flame licks, each flickering to its own pulse
+  const licks: [number, string][] = [[-0.1, '#c05018'], [0.08, '#e8a030'], [0, '#f4c430']]
+  licks.forEach(([ox, col], i) => {
+    const hgt = sz * (0.26 + 0.1 * Math.sin(t * 9 + i * 2.1))
+    const wob = Math.sin(t * 7 + i * 1.3) * sz * 0.04
+    g.fillStyle = col
+    g.beginPath()
+    g.moveTo(cx + ox * sz - sz * 0.08, cy + sz * 0.04)
+    g.lineTo(cx + ox * sz + wob, cy + sz * 0.04 - hgt)
+    g.lineTo(cx + ox * sz + sz * 0.08, cy + sz * 0.04)
+    g.closePath()
+    g.fill()
+  })
+  for (let k = 0; k < 3; k++) {
+    const ph = (t * 0.7 + k * 0.33) % 1
+    g.fillStyle = `rgba(200,200,208,${0.4 * (1 - ph)})`
+    g.fillRect(cx + Math.sin(ph * 7 + k) * sz * 0.1, cy - sz * (0.3 + ph * 0.9), 2, 2)
+  }
+}
+
+/** Clay pots stacked beside a doorway. */
+export function drawPots(g: CanvasRenderingContext2D, cx: number, cy: number, sz: number): void {
+  for (const [ox, s] of [[-0.12, 0.16], [0.1, 0.12]] as const) {
+    g.fillStyle = '#a05a32'
+    g.beginPath()
+    g.ellipse(cx + ox * sz, cy, sz * s, sz * s * 1.1, 0, 0, Math.PI * 2)
+    g.fill()
+    g.fillStyle = '#4a2414'
+    g.beginPath()
+    g.ellipse(cx + ox * sz, cy - sz * s * 0.9, sz * s * 0.55, sz * s * 0.28, 0, 0, Math.PI * 2)
+    g.fill()
+  }
+}
+
+/** A drying rack hung with the day's catch. */
+export function drawRack(g: CanvasRenderingContext2D, cx: number, cy: number, sz: number): void {
+  g.strokeStyle = '#5a3a1e'
+  g.lineWidth = 2
+  g.beginPath()
+  g.moveTo(cx - sz * 0.3, cy + sz * 0.18)
+  g.lineTo(cx - sz * 0.3, cy - sz * 0.22)
+  g.moveTo(cx + sz * 0.3, cy + sz * 0.18)
+  g.lineTo(cx + sz * 0.3, cy - sz * 0.22)
+  g.moveTo(cx - sz * 0.34, cy - sz * 0.2)
+  g.lineTo(cx + sz * 0.34, cy - sz * 0.2)
+  g.stroke()
+  g.fillStyle = '#b07850'
+  for (const ox of [-0.18, -0.02, 0.14]) g.fillRect(cx + ox * sz, cy - sz * 0.18, sz * 0.07, sz * 0.22)
+}
+
+/** A patch of maize, tassels catching the light. */
+export function drawCrop(g: CanvasRenderingContext2D, cx: number, cy: number, sz: number): void {
+  for (let r = 0; r < 2; r++) {
+    for (let c = 0; c < 3; c++) {
+      const x = cx + (c - 1) * sz * 0.28 + (r % 2) * sz * 0.09
+      const y = cy + (r - 0.5) * sz * 0.3
+      g.strokeStyle = '#4e7a3a'
+      g.lineWidth = 2
+      g.beginPath()
+      g.moveTo(x, y + sz * 0.14)
+      g.lineTo(x, y - sz * 0.2)
+      g.moveTo(x, y - sz * 0.02)
+      g.lineTo(x - sz * 0.09, y - sz * 0.1)
+      g.moveTo(x, y + 1 - sz * 0.06)
+      g.lineTo(x + sz * 0.09, y - sz * 0.14)
+      g.stroke()
+      g.fillStyle = '#e8d060'
+      g.fillRect(x - 1, y - sz * 0.26, 2, sz * 0.08)
+    }
+  }
+}
+
+/** The golden idol beside the chief of a City of Gold. */
+export function drawIdol(g: CanvasRenderingContext2D, cx: number, cy: number, sz: number, t: number): void {
+  const gleam = 0.2 + 0.08 * Math.sin(t * 2.4)
+  g.fillStyle = `rgba(244,196,48,${gleam})`
+  g.beginPath()
+  g.ellipse(cx, cy + sz * 0.08, sz * 0.34, sz * 0.16, 0, 0, Math.PI * 2)
+  g.fill()
+  g.fillStyle = '#8a6a20'
+  g.fillRect(cx - sz * 0.14, cy + sz * 0.04, sz * 0.28, sz * 0.08) // plinth
+  g.fillStyle = '#f4c430'
+  g.fillRect(cx - sz * 0.09, cy - sz * 0.22, sz * 0.18, sz * 0.26) // figure
+  g.beginPath()
+  g.arc(cx, cy - sz * 0.28, sz * 0.08, 0, Math.PI * 2)
+  g.fill()
+  g.fillStyle = '#fff2b0'
+  g.fillRect(cx - 1, cy - sz * 0.34, 2, 2) // the highlight that catches every eye
 }
 
 /** A mission fort: palisade square, gate, and the expedition banner. `t` sways the banner. */
