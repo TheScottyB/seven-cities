@@ -1,24 +1,14 @@
 import type { AudioCue, CueId } from './director'
 import { buildTheme, type Theme, type ThemeId } from './score'
 import { scheduleThemeWindow } from './music'
+import { synthTexture, noiseBuffer, type TextureKind } from './texture'
+import type { SceneControls } from './scene'
 
 /**
  * Thin WebAudio adapter. All decisions live in the director; this file only
  * turns AudioCue data into sound. `synthesize` takes any BaseAudioContext so
  * tests can render cues on an OfflineAudioContext and assert on the signal.
  */
-
-function noiseBuffer(ctx: BaseAudioContext, seconds: number): AudioBuffer {
-  const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * seconds), ctx.sampleRate)
-  const d = buf.getChannelData(0)
-  let s = 1234567
-  for (let i = 0; i < d.length; i++) {
-    // tiny deterministic LCG so offline renders are reproducible
-    s = (s * 1664525 + 1013904223) >>> 0
-    d[i] = (s / 4294967296) * 2 - 1
-  }
-  return buf
-}
 
 function env(ctx: BaseAudioContext, at: number, peak: number, attack: number, decay: number): GainNode {
   const g = ctx.createGain()
@@ -178,6 +168,9 @@ export class AudioPlayer {
   private themeStart = 0
   private themeUntil = 0
   private themeTimer: ReturnType<typeof setInterval> | null = null
+  private controls: SceneControls | null = null
+  private texTimer: ReturnType<typeof setInterval> | null = null
+  private texStats: Record<TextureKind, number> = { creak: 0, clang: 0, gull: 0, swell: 0, pad: 0, pulse: 0 }
 
   /** Call from a user-gesture handler; browsers gate audio until then. */
   unlock(): void {
@@ -204,6 +197,7 @@ export class AudioPlayer {
       this.themeId = null
       this.theme = null
       if (pending) this.setTheme(pending)
+      this.texTimer = setInterval(() => this.textureTick(), 250)
     } catch {
       this.ctx = null // no audio — the game plays silent
     }
@@ -267,6 +261,47 @@ export class AudioPlayer {
   /** Every cue ever received (capped) — the agent-testable seam. */
   getLog(): CueLogEntry[] {
     return this.log.slice()
+  }
+
+  /** The world tells the soundscape how it feels, every frame. */
+  setScene(c: SceneControls): void {
+    this.controls = c
+  }
+
+  /** How many of each ambient texture have fired — the other testable seam. */
+  getTextureStats(): Record<TextureKind, number> {
+    return { ...this.texStats }
+  }
+
+  /** Every 250ms: roll dice against the scene's rates and fire textures. */
+  private textureTick(): void {
+    const c = this.controls
+    if (!c || !this.ctx || !this.master || this.muted) return
+    const roll = (perMin: number) => perMin > 0 && Math.random() < (perMin * 0.25) / 60
+    const t = this.ctx.currentTime + Math.random() * 0.2
+    const vary = () => Math.random() * 2 - 1
+    const fire = (kind: TextureKind, opts: Parameters<typeof synthTexture>[4]) => {
+      synthTexture(this.ctx!, this.master!, kind, t, opts)
+      this.texStats[kind]++
+    }
+    if (roll(c.creaksPerMin)) fire('creak', { gain: 0.7 + Math.random() * 0.6, vary: vary() })
+    if (roll(c.clangsPerMin)) fire('clang', { gain: 0.6 + Math.random() * 0.5, vary: vary() })
+    if (roll(c.gullsPerMin)) fire('gull', { gain: 0.7 + Math.random() * 0.6, vary: vary() })
+    if (roll(c.swellsPerMin)) fire('swell', { gain: c.swellGain * (0.8 + Math.random() * 0.4), vary: vary() })
+    if (roll(c.padNotesPerMin)) {
+      // the drone drifts between a warm daylight set and a darker one as
+      // danger rises; random walks through a scale never audibly loop
+      const BRIGHT = [57, 60, 62, 64, 67]
+      const DARK = [45, 46, 48, 52, 53]
+      const scale = Math.random() < c.padDark ? DARK : BRIGHT
+      fire('pad', {
+        midi: scale[Math.floor(Math.random() * scale.length)],
+        dur: 3 + Math.random() * 3.5,
+        gain: 0.8 + Math.random() * 0.4,
+        vary: vary(),
+      })
+    }
+    if (roll(c.pulsesPerMin)) fire('pulse', { gain: c.pulseGain / 0.3 })
   }
 
   play(cues: AudioCue[]): void {
@@ -351,6 +386,17 @@ export class AudioPlayer {
     lfo.connect(lfoGain)
     lfoGain.connect(g.gain)
     lfo.start()
+    // at sea, the water's color itself drifts over minutes — no two
+    // stretches of the crossing sound quite alike
+    if (id === 'amb-sea' || id === 'amb-storm') {
+      const drift = this.ctx.createOscillator()
+      drift.frequency.value = 0.045
+      const driftGain = this.ctx.createGain()
+      driftGain.gain.value = spec.hz * 0.35
+      drift.connect(driftGain)
+      driftGain.connect(f.frequency)
+      drift.start()
+    }
     src.connect(f)
     f.connect(g)
     g.connect(this.master)

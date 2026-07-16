@@ -13,6 +13,8 @@ import { direct, ambienceFor, type AudioSnapshot, type GameEvent } from './audio
 import { AudioPlayer, synthesize } from './audio/player'
 import { musicFor, buildTheme, type ThemeId } from './audio/score'
 import { scheduleThemeWindow } from './audio/music'
+import { sceneControls, type SceneInput } from './audio/scene'
+import { synthTexture, type TextureKind } from './audio/texture'
 import { drawWalkin } from './ui/walkin'
 import { defaultOutfit, adjustOutfit, remainingBudget, type Outfit } from './game/outfit'
 import { serializeSave, deserializeSave, unpackBits, type SaveData } from './game/save'
@@ -126,11 +128,55 @@ function snapshot(): AudioSnapshot {
   }
 }
 
+/** Tiles from the ship to the nearest land — how loud the coast's gulls are. */
+function nearestLandDist(maxR = 14): number {
+  const { map, explorer } = world
+  const ex = Math.floor(explorer.x)
+  const ey = Math.floor(explorer.y)
+  const land = (x: number, y: number) =>
+    x >= 0 && y >= 0 && x < map.width && y < map.height && map.tiles[y * map.width + x] !== 0
+  if (land(ex, ey)) return 0
+  for (let r = 1; r <= maxR; r++) {
+    for (let dx = -r; dx <= r; dx++) if (land(ex + dx, ey - r) || land(ex + dx, ey + r)) return r
+    for (let dy = -r + 1; dy <= r - 1; dy++) if (land(ex - r, ey + dy) || land(ex + r, ey + dy)) return r
+  }
+  return Infinity
+}
+
+function sceneInput(): SceneInput {
+  const s = world.state
+  const famine = s.food < 80 ? 1 - s.food / 80 : 0
+  let hostility = 0
+  if (screen === 'walkin' && walkin) {
+    hostility = walkin.hostile ? 1 : 0
+  } else if (!world.sailing) {
+    for (const v of world.villages) {
+      if (v.depleted) continue
+      if (effectiveTemperament(v.temperament, s.fear) >= 0.35) continue
+      const d = Math.hypot(v.x + 0.5 - world.explorer.x, v.y + 0.5 - world.explorer.y)
+      hostility = Math.max(hostility, 1 - d / 12)
+    }
+  }
+  const wind = windAt(world.weather, s.elapsed)
+  return {
+    screen,
+    sailing: world.sailing,
+    inStorm:
+      world.sailing &&
+      stormAt(world.weather, s.elapsed, world.map.width, world.map.height, world.explorer.x, world.explorer.y),
+    wind: wind.strength,
+    distToLand: world.sailing ? nearestLandDist() : 0,
+    hostility: Math.max(0, Math.min(1, hostility)),
+    famine,
+  }
+}
+
 function pumpAudio(): void {
   const snap = snapshot()
   if (prevSnap) player.play(direct(prevSnap, snap, audioEvents))
   else player.play([{ id: ambienceFor(snap) }])
   player.setTheme(musicFor(snap))
+  player.setScene(sceneControls(sceneInput()))
   prevSnap = snap
   audioEvents = []
 }
@@ -721,6 +767,26 @@ if (import.meta.env.DEV) {
         return Math.sqrt(s1 * s1 + s2 * s2 - c * s1 * s2) / n
       }
       return { rms, e660: goertzel(660), e880: goertzel(880), e120: goertzel(120), e3000: goertzel(3000) }
+    },
+    // the living soundscape's inputs, controls, and firing counts
+    audioScene: () => ({
+      input: sceneInput(),
+      controls: sceneControls(sceneInput()),
+      stats: player.getTextureStats(),
+    }),
+    // render one ambient texture offline and measure it
+    renderTexture: async (kind: string, seconds = 3) => {
+      const off = new OfflineAudioContext(1, Math.floor(seconds * 44100), 44100)
+      synthTexture(off, off.destination, kind as TextureKind, 0.1, { midi: 57, dur: 1.6 })
+      const buf = await off.startRendering()
+      const d = buf.getChannelData(0)
+      let sum = 0
+      let peak = 0
+      for (let i = 0; i < d.length; i++) {
+        sum += d[i] * d[i]
+        peak = Math.max(peak, Math.abs(d[i]))
+      }
+      return { rms: Math.sqrt(sum / d.length), peak }
     },
     // render the opening seconds of a score theme offline and measure it
     renderTheme: async (id: string, seconds = 4) => {

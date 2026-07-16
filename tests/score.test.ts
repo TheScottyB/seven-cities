@@ -5,20 +5,16 @@ const snap = (screen: string, won = false, lost = false) => ({ screen, won, lost
 const pcs = (id: ThemeId) => new Set(buildTheme(id).notes.map((n) => n.midi % 12))
 
 describe('which piece the moment calls for', () => {
-  it('the title theme carries from the chart table to the outfitter', () => {
+  it('the score belongs to the opening title alone', () => {
     expect(musicFor(snap('start'))).toBe('title')
-    expect(musicFor(snap('outfit'))).toBe('title')
   })
-  it('the harbor motif greets every return to Spain', () => {
-    expect(musicFor(snap('spain'))).toBe('spain')
-  })
-  it('the New World itself is unscored — ambience owns the wilderness', () => {
+  it('everywhere else, the world speaks for itself', () => {
+    expect(musicFor(snap('outfit'))).toBeNull()
+    expect(musicFor(snap('spain'))).toBeNull()
     expect(musicFor(snap('playing'))).toBeNull()
     expect(musicFor(snap('walkin'))).toBeNull()
-  })
-  it('the end of an expedition gets a hymn or a lament', () => {
-    expect(musicFor(snap('over', true))).toBe('victory')
-    expect(musicFor(snap('over', false, true))).toBe('lament')
+    expect(musicFor(snap('over', true))).toBeNull()
+    expect(musicFor(snap('over', false, true))).toBeNull()
   })
 })
 

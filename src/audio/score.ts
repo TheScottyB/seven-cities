@@ -25,12 +25,14 @@ export interface Theme {
   notes: ScoreNote[]
 }
 
-/** Which piece the moment calls for — the score's one decision. */
+/**
+ * Which piece the moment calls for — the score's one decision. The theme
+ * belongs to the opening title alone; everywhere else the world speaks for
+ * itself: creaking timber and gulls at sea, the living drone ashore. The
+ * other pieces remain in the songbook (renderable via the dev hooks).
+ */
 export function musicFor(s: { screen: string; won: boolean; lost: boolean }): ThemeId | null {
-  if (s.screen === 'start' || s.screen === 'outfit') return 'title'
-  if (s.screen === 'spain') return 'spain'
-  if (s.screen === 'over') return s.won ? 'victory' : 'lament'
-  return null // in the New World, the wilderness is the music
+  return s.screen === 'start' ? 'title' : null
 }
 
 const N = (t: number, dur: number, midi: number, gain: number, voice: Voice): ScoreNote => ({ t, dur, midi, gain, voice })
