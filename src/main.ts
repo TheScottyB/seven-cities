@@ -727,7 +727,22 @@ function render() {
 
   if (screen === 'over') {
     const won = world.state.status === GameStatus.Won
-    drawGameOver(ctx, canvas.width, canvas.height, won, score(world.state, world.fog.revealedCount) + career.banked, career)
+    drawGameOver(
+      ctx,
+      canvas.width,
+      canvas.height,
+      won,
+      score(world.state, world.fog.revealedCount) + career.banked,
+      career,
+      {
+        cities: world.state.citiesFound,
+        day: world.state.day,
+        villages: world.state.villagesContacted,
+        gold: Math.floor(world.state.gold) + career.banked,
+        charted: world.fog.revealedCount,
+      },
+      performance.now() / 1000,
+    )
   }
 }
 

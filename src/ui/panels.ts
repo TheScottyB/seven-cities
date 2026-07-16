@@ -5,7 +5,7 @@ import { bestScore, type ChronicleEntry } from '../game/chronicle'
 import { rankTitle, rankIndex, budgetFor, RANKS, type Career } from '../game/career'
 import { dailyAppetite, type GameState } from '../game/state'
 import { addHit, hovered } from './hit'
-import { drawChief, drawIdol, drawShip, drawVillager, drawShadow } from '../art/sprites'
+import { drawChief, drawIdol, drawShip, drawVillager, drawShadow, drawVillage } from '../art/sprites'
 
 function panel(ctx: CanvasRenderingContext2D, viewW: number, viewH: number, w: number, h: number, border = '#f4c430') {
   const x = (viewW - w) / 2
@@ -516,6 +516,15 @@ export function drawResult(ctx: CanvasRenderingContext2D, viewW: number, viewH: 
   ctx.textAlign = 'left'
 }
 
+/** The ledger a game-over settles: what the expedition amounted to. */
+export interface ExpeditionSummary {
+  cities: number
+  day: number
+  villages: number
+  gold: number
+  charted: number
+}
+
 export function drawGameOver(
   ctx: CanvasRenderingContext2D,
   viewW: number,
@@ -523,24 +532,84 @@ export function drawGameOver(
   won: boolean,
   score: number,
   career?: Career,
+  summary?: ExpeditionSummary,
+  t = 0,
 ): void {
-  ctx.fillStyle = 'rgba(6,6,12,0.9)'
+  // victory keeps a little warmth in the dark; defeat goes cold and red
+  ctx.fillStyle = won ? 'rgba(10,8,4,0.88)' : 'rgba(8,4,6,0.92)'
   ctx.fillRect(0, 0, viewW, viewH)
+  if (!won) {
+    const vig = ctx.createRadialGradient(
+      viewW / 2, viewH / 2, Math.min(viewW, viewH) * 0.3,
+      viewW / 2, viewH / 2, Math.max(viewW, viewH) * 0.7,
+    )
+    vig.addColorStop(0, 'rgba(90,16,14,0)')
+    vig.addColorStop(1, 'rgba(90,16,14,0.28)')
+    ctx.fillStyle = vig
+    ctx.fillRect(0, 0, viewW, viewH)
+  }
   drawFrame(ctx, viewW, viewH)
   const cx = viewW / 2
+
+  // the seven cities, tallied: gold for each one found, ash for the rest
+  const cities = summary?.cities ?? (won ? 7 : 0)
+  const arcY = viewH / 2 - 128
+  for (let i = 0; i < 7; i++) {
+    const ax = cx + (i - 3) * 64
+    const ay = arcY + (i - 3) * (i - 3) * 3.4 // outer cities dip — a strand of beads
+    const found = i < cities
+    ctx.save()
+    ctx.translate(ax, ay)
+    ctx.scale(1.7, 1.7)
+    if (found) {
+      // each found city gleams in its turn
+      ctx.globalAlpha = 0.82 + 0.18 * Math.sin(t * 2.2 - i * 0.9)
+      drawVillage(ctx, 0, 0, true, false)
+    } else {
+      ctx.globalAlpha = 0.28
+      drawVillage(ctx, 0, 0, false, false)
+    }
+    ctx.restore()
+    ctx.globalAlpha = 1
+  }
+
   if (won) {
+    // gold dust rises off the treasure
+    ctx.fillStyle = '#ffe27a'
+    for (let i = 0; i < 18; i++) {
+      const ph = (t * 0.12 + i * 0.055) % 1
+      const px = cx + Math.sin(i * 2.7 + t * 0.4) * (viewW * 0.28) + (i - 9) * 14
+      ctx.globalAlpha = 0.5 * (1 - ph)
+      ctx.fillRect(px, viewH * 0.78 - ph * viewH * 0.5, 2, 2)
+    }
+    ctx.globalAlpha = 1
+    ctx.save()
+    ctx.shadowColor = 'rgba(244,196,48,0.8)'
+    ctx.shadowBlur = 12 + 5 * Math.sin(t * 2.6)
     center(ctx, 'THE SEVEN CITIES ARE YOURS', cx, viewH / 2 - 40, "bold 36px 'Courier New', monospace", '#f4c430')
-    center(ctx, 'Glory and gold beyond measure.', cx, viewH / 2, "18px 'Courier New', monospace", '#e0d18a')
+    ctx.restore()
+    center(ctx, 'Glory and gold beyond measure.', cx, viewH / 2 - 6, "18px 'Courier New', monospace", '#e0d18a')
   } else {
     center(ctx, 'THE EXPEDITION IS LOST', cx, viewH / 2 - 40, "bold 36px 'Courier New', monospace", '#c0504d')
-    center(ctx, 'Your crew will chart no more.', cx, viewH / 2, "18px 'Courier New', monospace", '#c9c9d2')
+    center(ctx, 'Your crew will chart no more. The sea keeps its secrets.', cx, viewH / 2 - 6, "18px 'Courier New', monospace", '#c9c9d2')
   }
-  center(ctx, `Final score: ${score}`, cx, viewH / 2 + 40, "20px 'Courier New', monospace", '#ffffff')
+
+  center(ctx, `Final score: ${score}`, cx, viewH / 2 + 40, "22px 'Courier New', monospace", '#ffffff')
+  if (summary) {
+    // the reckoning, item by item — how the score came to be
+    const parts = [
+      `${summary.gold} gold`,
+      `+${Math.floor(summary.charted * 0.5)} lands charted`,
+      `+${summary.villages * 20} peoples met`,
+      `−${summary.day * 5} for ${summary.day} ${summary.day === 1 ? 'day' : 'days'} at large`,
+    ]
+    center(ctx, parts.join('   ·   '), cx, viewH / 2 + 66, "13px 'Courier New', monospace", '#8a8a94')
+  }
   if (career) {
     const line = `${rankTitle(career.banked)} · ${career.voyages} ${career.voyages === 1 ? 'voyage' : 'voyages'} completed · ${career.banked} gold banked`
-    center(ctx, line, cx, viewH / 2 + 70, "15px 'Courier New', monospace", '#c9a94f')
+    center(ctx, line, cx, viewH / 2 + 94, "15px 'Courier New', monospace", '#c9a94f')
   }
   const go = 'Press ENTER for a new expedition'
-  center(ctx, go, cx, viewH / 2 + 108, "16px 'Courier New', monospace", '#7fd17f')
-  centerHit(ctx, 'over-restart', go, cx, viewH / 2 + 108, "16px 'Courier New', monospace")
+  center(ctx, go, cx, viewH / 2 + 132, "16px 'Courier New', monospace", hovered('over-restart') ? '#a8f0a8' : '#7fd17f')
+  centerHit(ctx, 'over-restart', go, cx, viewH / 2 + 132, "16px 'Courier New', monospace")
 }
