@@ -3,7 +3,7 @@ import { makeRng } from '../world/rng'
 
 export const TILE_PX = 16
 /** variants per terrain type — chosen per-tile by position hash to break repetition */
-export const TILE_VARIANTS = 3
+export const TILE_VARIANTS = 4
 
 export type Tileset = Map<number, HTMLCanvasElement[]>
 
@@ -45,8 +45,10 @@ function drawTile(type: number, variant: number): HTMLCanvasElement {
       const dark = shade(base, -0.18)
       for (let i = 0; i < 3; i++) {
         const y = (variant * 2 + i * 5 + Math.floor(rng() * 2)) % TILE_PX
-        px(1 + Math.floor(rng() * 3), y, 5, 1, light)
-        px(9 + Math.floor(rng() * 3), (y + 3) % TILE_PX, 4, 1, dark)
+        // dashes scattered across the full tile width — fixed bands would
+        // line up into visible columns across the whole sea
+        px(Math.floor(rng() * 11), y, 5, 1, light)
+        px(Math.floor(rng() * 12), (y + 3) % TILE_PX, 4, 1, dark)
       }
       break
     }

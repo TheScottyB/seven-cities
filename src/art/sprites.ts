@@ -101,8 +101,8 @@ export function drawHut(g: CanvasRenderingContext2D, cx: number, cy: number, sz:
   g.fillRect(cx - sz * 0.1, cy + sz * 0.12, sz * 0.2, sz * 0.25)
 }
 
-/** A mission fort: palisade square, gate, and the expedition banner. */
-export function drawFort(g: CanvasRenderingContext2D, cx: number, cy: number): void {
+/** A mission fort: palisade square, gate, and the expedition banner. `t` sways the banner. */
+export function drawFort(g: CanvasRenderingContext2D, cx: number, cy: number, t = -1): void {
   const s = TILE_PX
   g.fillStyle = '#6a4a2a'
   g.fillRect(cx - s * 0.42, cy - s * 0.3, s * 0.84, s * 0.62)
@@ -110,7 +110,8 @@ export function drawFort(g: CanvasRenderingContext2D, cx: number, cy: number): v
   for (let i = 0; i < 5; i++) g.fillRect(cx - s * 0.42 + i * s * 0.2, cy - s * 0.38, s * 0.08, s * 0.12)
   g.fillStyle = '#2a1c10'
   g.fillRect(cx - s * 0.1, cy + s * 0.05, s * 0.2, s * 0.27)
-  // banner
+  // banner, rippling in the wind when animated
+  const flut = t >= 0 ? Math.sin(t * 6) : 0
   g.strokeStyle = '#3a2a18'
   g.lineWidth = 1
   g.beginPath()
@@ -118,12 +119,14 @@ export function drawFort(g: CanvasRenderingContext2D, cx: number, cy: number): v
   g.lineTo(cx + s * 0.3, cy - s * 0.62)
   g.stroke()
   g.fillStyle = '#f4c430'
-  g.fillRect(cx + s * 0.3, cy - s * 0.62, s * 0.22, s * 0.14)
+  g.fillRect(cx + s * 0.3, cy - s * 0.62, s * (0.22 - 0.05 * flut), s * 0.14)
 }
 
-/** The expedition's caravel: dark hull, white sail, pennant. */
-export function drawShip(g: CanvasRenderingContext2D, cx: number, cy: number): void {
+/** The expedition's caravel: dark hull, white sail, pennant. `t` bobs it on the swell. */
+export function drawShip(g: CanvasRenderingContext2D, cx: number, cy: number, t = -1): void {
   const s = TILE_PX
+  if (t >= 0) cy += Math.sin(t * 2.2 + cx * 0.05) * s * 0.05 // ride the swell
+  const flut = t >= 0 ? Math.sin(t * 7 + cx * 0.11) : 0
   // hull
   g.fillStyle = '#5a3a22'
   g.beginPath()
@@ -136,26 +139,27 @@ export function drawShip(g: CanvasRenderingContext2D, cx: number, cy: number): v
   // mast
   g.fillStyle = '#3a2a18'
   g.fillRect(cx - s * 0.04, cy - s * 0.45, s * 0.08, s * 0.5)
-  // sail
+  // sail, bellying slightly with the wind
   g.fillStyle = '#e8e4d8'
   g.beginPath()
   g.moveTo(cx + s * 0.04, cy - s * 0.42)
-  g.lineTo(cx + s * 0.38, cy - s * 0.02)
+  g.lineTo(cx + s * (0.38 + 0.04 * flut), cy - s * 0.02)
   g.lineTo(cx + s * 0.04, cy - s * 0.02)
   g.closePath()
   g.fill()
   // pennant
   g.fillStyle = '#b1372f'
-  g.fillRect(cx - s * 0.2, cy - s * 0.48, s * 0.16, s * 0.09)
+  g.fillRect(cx - s * 0.2, cy - s * 0.48, s * (0.16 - 0.04 * flut), s * 0.09)
 }
 
-/** A village: cluster of huts, gold-roofed if it's one of the fabled cities. */
+/** A village: cluster of huts, gold-roofed if it's one of the fabled cities. `t` animates hearth smoke. */
 export function drawVillage(
   g: CanvasRenderingContext2D,
   cx: number,
   cy: number,
   golden: boolean,
   discovered: boolean,
+  t = -1,
 ): void {
   const s = TILE_PX
   const roof = golden ? '#f4c430' : '#7a4a24'
@@ -174,5 +178,15 @@ export function drawVillage(
     g.strokeStyle = '#fff2b0'
     g.lineWidth = 1
     g.strokeRect(cx - s * 0.42, cy - s * 0.36, s * 0.84, s * 0.78)
+  }
+  // hearth smoke drifting up from the middle roof
+  if (t >= 0) {
+    const cycle = 5
+    for (let i = 0; i < 2; i++) {
+      const ph = ((t * 1.4 + i * cycle * 0.5) % cycle) / cycle // 0 at the roof, 1 dispersed
+      const rise = ph * s * 0.55
+      g.fillStyle = `rgba(200,200,208,${0.5 * (1 - ph)})`
+      g.fillRect(cx + Math.sin(ph * 6 + cx) * s * 0.06, cy - s * 0.3 - rise, 1, 1)
+    }
   }
 }

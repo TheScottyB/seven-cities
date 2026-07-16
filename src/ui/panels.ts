@@ -4,6 +4,7 @@ import { TRADE_GOODS, GIFT_GOODS, effectiveTemperament } from '../game/encounter
 import { bestScore, type ChronicleEntry } from '../game/chronicle'
 import { rankTitle, rankIndex, budgetFor, RANKS, type Career } from '../game/career'
 import { dailyAppetite, type GameState } from '../game/state'
+import { addHit } from './hit'
 
 function panel(ctx: CanvasRenderingContext2D, viewW: number, viewH: number, w: number, h: number) {
   const x = (viewW - w) / 2
@@ -25,6 +26,132 @@ function center(ctx: CanvasRenderingContext2D, text: string, cx: number, y: numb
   ctx.textAlign = 'left'
 }
 
+/** Register a click region centred on a line of text drawn with `center`. */
+function centerHit(ctx: CanvasRenderingContext2D, id: string, text: string, cx: number, y: number, font: string) {
+  ctx.font = font
+  const w = ctx.measureText(text).width + 24
+  addHit(id, cx - w / 2, y - 20, w, 28)
+}
+
+// --- procedural ornament ---------------------------------------------------
+
+/** Double gold rule around the screen with diamond corners — the map's frame. */
+function drawFrame(ctx: CanvasRenderingContext2D, viewW: number, viewH: number): void {
+  ctx.strokeStyle = 'rgba(244,196,48,0.45)'
+  ctx.lineWidth = 1
+  ctx.strokeRect(14.5, 14.5, viewW - 29, viewH - 29)
+  ctx.strokeStyle = 'rgba(244,196,48,0.18)'
+  ctx.strokeRect(20.5, 20.5, viewW - 41, viewH - 41)
+  ctx.fillStyle = 'rgba(244,196,48,0.6)'
+  for (const [x, y] of [[14.5, 14.5], [viewW - 14.5, 14.5], [14.5, viewH - 14.5], [viewW - 14.5, viewH - 14.5]]) {
+    ctx.beginPath()
+    ctx.moveTo(x, y - 5)
+    ctx.lineTo(x + 5, y)
+    ctx.lineTo(x, y + 5)
+    ctx.lineTo(x - 5, y)
+    ctx.closePath()
+    ctx.fill()
+  }
+}
+
+/** An eight-point compass rose for the chart's title. */
+function drawCompassRose(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number): void {
+  ctx.save()
+  ctx.translate(cx, cy)
+  ctx.strokeStyle = 'rgba(154,154,166,0.4)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.arc(0, 0, r * 0.62, 0, Math.PI * 2)
+  ctx.stroke()
+  // short diagonal points
+  ctx.fillStyle = 'rgba(122,122,134,0.6)'
+  for (let i = 0; i < 4; i++) {
+    ctx.save()
+    ctx.rotate(Math.PI / 4 + (i * Math.PI) / 2)
+    ctx.beginPath()
+    ctx.moveTo(0, -r * 0.55)
+    ctx.lineTo(r * 0.1, 0)
+    ctx.lineTo(-r * 0.1, 0)
+    ctx.closePath()
+    ctx.fill()
+    ctx.restore()
+  }
+  // long cardinal points, gold north
+  for (let i = 0; i < 4; i++) {
+    ctx.save()
+    ctx.rotate((i * Math.PI) / 2)
+    ctx.fillStyle = i === 0 ? '#f4c430' : 'rgba(201,201,210,0.75)'
+    ctx.beginPath()
+    ctx.moveTo(0, -r)
+    ctx.lineTo(r * 0.13, 0)
+    ctx.lineTo(-r * 0.13, 0)
+    ctx.closePath()
+    ctx.fill()
+    ctx.restore()
+  }
+  ctx.fillStyle = '#0a0a12'
+  ctx.beginPath()
+  ctx.arc(0, 0, r * 0.1, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = '#f4c430'
+  ctx.beginPath()
+  ctx.arc(0, 0, r * 0.1, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.restore()
+}
+
+/** The Crown's arms: a crown over a quartered shield. */
+function drawCrest(ctx: CanvasRenderingContext2D, cx: number, cy: number, s: number): void {
+  // crown
+  ctx.fillStyle = '#f4c430'
+  ctx.fillRect(cx - s * 0.5, cy - s * 0.95, s, s * 0.16)
+  for (const ox of [-0.42, 0, 0.42]) {
+    ctx.beginPath()
+    ctx.moveTo(cx + ox * s - s * 0.11, cy - s * 0.95)
+    ctx.lineTo(cx + ox * s, cy - s * 1.22)
+    ctx.lineTo(cx + ox * s + s * 0.11, cy - s * 0.95)
+    ctx.closePath()
+    ctx.fill()
+  }
+  ctx.fillStyle = '#b1372f'
+  for (const ox of [-0.42, 0, 0.42]) ctx.fillRect(cx + ox * s - s * 0.035, cy - s * 1.2, s * 0.07, s * 0.07)
+  // shield: quartered castle-gold and lion-red
+  const w = s * 0.92
+  const top = cy - s * 0.68
+  const h = s * 1.15
+  ctx.save()
+  ctx.beginPath()
+  ctx.moveTo(cx - w / 2, top)
+  ctx.lineTo(cx + w / 2, top)
+  ctx.lineTo(cx + w / 2, top + h * 0.6)
+  ctx.quadraticCurveTo(cx + w / 2, top + h * 0.92, cx, top + h)
+  ctx.quadraticCurveTo(cx - w / 2, top + h * 0.92, cx - w / 2, top + h * 0.6)
+  ctx.closePath()
+  ctx.clip()
+  ctx.fillStyle = '#8a3a2a'
+  ctx.fillRect(cx - w / 2, top, w, h)
+  ctx.fillStyle = '#c9a94f'
+  ctx.fillRect(cx - w / 2, top, w / 2, h / 2)
+  ctx.fillRect(cx, top + h / 2, w / 2, h / 2)
+  // tiny castle marks on the gold quarters
+  ctx.fillStyle = '#6a4a1a'
+  ctx.fillRect(cx - w * 0.32, top + h * 0.16, w * 0.14, w * 0.14)
+  ctx.fillRect(cx + w * 0.18, top + h * 0.66, w * 0.14, w * 0.14)
+  ctx.restore()
+  ctx.strokeStyle = '#f4c430'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(cx - w / 2, top)
+  ctx.lineTo(cx + w / 2, top)
+  ctx.lineTo(cx + w / 2, top + h * 0.6)
+  ctx.quadraticCurveTo(cx + w / 2, top + h * 0.92, cx, top + h)
+  ctx.quadraticCurveTo(cx - w / 2, top + h * 0.92, cx - w / 2, top + h * 0.6)
+  ctx.closePath()
+  ctx.stroke()
+}
+
+// --- screens ---------------------------------------------------------------
+
 export function drawOutfitScreen(
   ctx: CanvasRenderingContext2D,
   viewW: number,
@@ -35,6 +162,7 @@ export function drawOutfitScreen(
 ): void {
   ctx.fillStyle = '#0a0a12'
   ctx.fillRect(0, 0, viewW, viewH)
+  drawFrame(ctx, viewW, viewH)
   const cx = viewW / 2
   center(ctx, 'OUTFIT YOUR EXPEDITION', cx, viewH / 2 - 150, "bold 32px 'Courier New', monospace", '#f4c430')
   center(
@@ -60,7 +188,14 @@ export function drawOutfitScreen(
     ctx.font = sel ? "bold 20px 'Courier New', monospace" : "18px 'Courier New', monospace"
     ctx.fillStyle = sel ? '#f4c430' : '#c9c9d2'
     ctx.fillText(`${sel ? '> ' : '  '}${label}`, left, y)
-    ctx.fillText(`< ${String(outfit[key]).padStart(3)} >`, left + 260, y)
+    const valStr = `< ${String(outfit[key]).padStart(3)} >`
+    ctx.fillText(valStr, left + 260, y)
+    // click targets: the label selects the row; the angle brackets adjust it
+    addHit(`outfit-row-${i}`, left - 8, y - 20, 240, 28)
+    const chW = ctx.measureText('<').width
+    const valW = ctx.measureText(valStr).width
+    addHit(`outfit-dec-${i}`, left + 250, y - 20, chW + 20, 28)
+    addHit(`outfit-inc-${i}`, left + 260 + valW - chW - 10, y - 20, chW + 20, 28)
     ctx.font = "13px 'Courier New', monospace"
     ctx.fillStyle = '#7a7a86'
     ctx.fillText(desc, left + 24, y + 20)
@@ -85,7 +220,9 @@ export function drawOutfitScreen(
     "14px 'Courier New', monospace",
     days < 5 ? '#c0504d' : '#7a9a7a',
   )
-  center(ctx, '↑↓ choose   ←→ adjust   ENTER set sail', cx, y + 62, "15px 'Courier New', monospace", '#7fd17f')
+  const go = '↑↓ choose   ←→ adjust   ENTER set sail'
+  center(ctx, go, cx, y + 62, "15px 'Courier New', monospace", '#7fd17f')
+  centerHit(ctx, 'outfit-go', go, cx, y + 62, "15px 'Courier New', monospace")
 }
 
 export function drawStartScreen(
@@ -98,7 +235,9 @@ export function drawStartScreen(
 ): void {
   ctx.fillStyle = '#0a0a12'
   ctx.fillRect(0, 0, viewW, viewH)
+  drawFrame(ctx, viewW, viewH)
   const cx = viewW / 2
+  drawCompassRose(ctx, cx, viewH / 2 - 196, 34)
   center(ctx, 'THE SEVEN CITIES OF GOLD', cx, viewH / 2 - 120, "bold 40px 'Courier New', monospace", '#f4c430')
   center(ctx, 'A modern expedition into the New World', cx, viewH / 2 - 82, "18px 'Courier New', monospace", '#c9c9d2')
 
@@ -120,6 +259,9 @@ export function drawStartScreen(
   for (const l of lines) {
     const color = l.startsWith('Press ENTER') ? '#7fd17f' : l.startsWith('Press C') ? '#f4c430' : '#9a9aa6'
     center(ctx, l, cx, y, "16px 'Courier New', monospace", color)
+    if (l.startsWith('Press ENTER')) centerHit(ctx, 'start-new', l, cx, y, "16px 'Courier New', monospace")
+    else if (l.startsWith('Press C')) centerHit(ctx, 'start-continue', l, cx, y, "16px 'Courier New', monospace")
+    else if (l.startsWith('Seed:')) centerHit(ctx, 'start-reroll', l, cx, y, "16px 'Courier New', monospace")
     y += 26
   }
 
@@ -149,7 +291,9 @@ export function drawSpainScreen(
 ): void {
   ctx.fillStyle = '#0a0a12'
   ctx.fillRect(0, 0, viewW, viewH)
+  drawFrame(ctx, viewW, viewH)
   const cx = viewW / 2
+  drawCrest(ctx, cx, viewH / 2 - 188, 42)
   const title = rankTitle(career.banked)
   center(ctx, 'SPAIN — THE COURT OF THE CROWN', cx, viewH / 2 - 150, "bold 32px 'Courier New', monospace", '#f4c430')
   center(
@@ -180,7 +324,9 @@ export function drawSpainScreen(
     center(ctx, l, cx, y, "15px 'Courier New', monospace", '#9a9aa6')
     y += 26
   }
-  center(ctx, 'Press ENTER to outfit your next voyage', cx, y + 22, "16px 'Courier New', monospace", '#7fd17f')
+  const go = 'Press ENTER to outfit your next voyage'
+  center(ctx, go, cx, y + 22, "16px 'Courier New', monospace", '#7fd17f')
+  centerHit(ctx, 'spain-go', go, cx, y + 22, "16px 'Courier New', monospace")
 }
 
 export function drawEncounter(
@@ -191,7 +337,8 @@ export function drawEncounter(
   goods: number,
   fear = 0,
 ): void {
-  const { x, y } = panel(ctx, viewW, viewH, Math.min(580, viewW - 24), 268)
+  const w = Math.min(580, viewW - 24)
+  const { x, y } = panel(ctx, viewW, viewH, w, 268)
   const cx = viewW / 2
   const title = v.golden ? 'A CITY OF GOLD!' : 'A native village'
   center(ctx, title, cx, y + 44, "bold 26px 'Courier New', monospace", v.golden ? '#f4c430' : '#e0d18a')
@@ -222,14 +369,32 @@ export function drawEncounter(
     ctx.fillStyle = disabled ? '#5a5a64' : '#d7d7de'
     ctx.font = "15px 'Courier New', monospace"
     ctx.fillText(label + (disabled ? '  — no goods!' : ''), x + 76, ly)
+    if (!disabled) addHit(`enc-${k}`, x + 24, ly - 20, w - 48, 30)
     ly += 34
   }
-  center(ctx, 'Esc — walk away', cx, y + 244, "14px 'Courier New', monospace", '#7a7a86')
+  const esc = 'Esc — walk away'
+  center(ctx, esc, cx, y + 244, "14px 'Courier New', monospace", '#7a7a86')
+  centerHit(ctx, 'enc-esc', esc, cx, y + 244, "14px 'Courier New', monospace")
 }
 
-export function drawResult(ctx: CanvasRenderingContext2D, viewW: number, viewH: number, text: string): void {
-  const { y } = panel(ctx, viewW, viewH, Math.min(460, viewW - 24), 90)
-  center(ctx, text, viewW / 2, y + 54, "18px 'Courier New', monospace", '#7fd17f')
+/**
+ * Transient notice as a slim banner under the HUD — it informs without
+ * hiding the ship, the storm, or the village it is talking about.
+ */
+export function drawResult(ctx: CanvasRenderingContext2D, viewW: number, viewH: number, text: string, top = 64): void {
+  ctx.font = "16px 'Courier New', monospace"
+  const w = Math.min(ctx.measureText(text).width + 48, viewW - 16)
+  const x = (viewW - w) / 2
+  ctx.fillStyle = 'rgba(10,12,22,0.88)'
+  ctx.fillRect(x, top, w, 34)
+  ctx.strokeStyle = 'rgba(244,196,48,0.7)'
+  ctx.lineWidth = 1
+  ctx.strokeRect(x + 0.5, top + 0.5, w - 1, 33)
+  ctx.fillStyle = '#7fd17f'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'alphabetic'
+  ctx.fillText(text, viewW / 2, top + 23)
+  ctx.textAlign = 'left'
 }
 
 export function drawGameOver(
@@ -242,6 +407,7 @@ export function drawGameOver(
 ): void {
   ctx.fillStyle = 'rgba(6,6,12,0.9)'
   ctx.fillRect(0, 0, viewW, viewH)
+  drawFrame(ctx, viewW, viewH)
   const cx = viewW / 2
   if (won) {
     center(ctx, 'THE SEVEN CITIES ARE YOURS', cx, viewH / 2 - 40, "bold 36px 'Courier New', monospace", '#f4c430')
@@ -255,5 +421,7 @@ export function drawGameOver(
     const line = `${rankTitle(career.banked)} · ${career.voyages} ${career.voyages === 1 ? 'voyage' : 'voyages'} completed · ${career.banked} gold banked`
     center(ctx, line, cx, viewH / 2 + 70, "15px 'Courier New', monospace", '#c9a94f')
   }
-  center(ctx, 'Press ENTER for a new expedition', cx, viewH / 2 + 108, "16px 'Courier New', monospace", '#7fd17f')
+  const go = 'Press ENTER for a new expedition'
+  center(ctx, go, cx, viewH / 2 + 108, "16px 'Courier New', monospace", '#7fd17f')
+  centerHit(ctx, 'over-restart', go, cx, viewH / 2 + 108, "16px 'Courier New', monospace")
 }

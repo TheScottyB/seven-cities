@@ -26,6 +26,18 @@ function env(ctx: BaseAudioContext, at: number, peak: number, attack: number, de
   return g
 }
 
+/**
+ * Humanization for a whole cue: `detune` in cents shifts every tone together
+ * (intervals stay intact), `gain` scales every peak. Defaults are neutral so
+ * offline test renders stay bit-deterministic.
+ */
+export interface CueVoicing {
+  detune?: number
+  gain?: number
+}
+
+let voicing: Required<CueVoicing> = { detune: 0, gain: 1 }
+
 function tone(
   ctx: BaseAudioContext,
   dest: AudioNode,
@@ -37,8 +49,8 @@ function tone(
 ): void {
   const o = ctx.createOscillator()
   o.type = type
-  o.frequency.setValueAtTime(freq, at)
-  const g = env(ctx, at, peak, 0.01, dur)
+  o.frequency.setValueAtTime(freq * Math.pow(2, voicing.detune / 1200), at)
+  const g = env(ctx, at, peak * voicing.gain, 0.01, dur)
   o.connect(g)
   g.connect(dest)
   o.start(at)
@@ -60,7 +72,7 @@ function noiseBurst(
   f.type = 'bandpass'
   f.frequency.setValueAtTime(filterHz, at)
   f.Q.setValueAtTime(q, at)
-  const g = env(ctx, at, peak, 0.02, dur)
+  const g = env(ctx, at, peak * voicing.gain, 0.02, dur)
   src.connect(f)
   f.connect(g)
   g.connect(dest)
@@ -69,7 +81,8 @@ function noiseBurst(
 }
 
 /** One-shot cues rendered onto any context — the offline-testable core. */
-export function synthesize(ctx: BaseAudioContext, dest: AudioNode, id: CueId, at = 0): void {
+export function synthesize(ctx: BaseAudioContext, dest: AudioNode, id: CueId, at = 0, v: CueVoicing = {}): void {
+  voicing = { detune: v.detune ?? 0, gain: v.gain ?? 1 }
   switch (id) {
     case 'trade': // two-note major pluck
       tone(ctx, dest, 'triangle', 660, at, 0.18, 0.5)
@@ -138,7 +151,7 @@ const AMBIENTS: Record<string, { hz: number; q: number; gain: number; lfoHz: num
   'amb-sea': { hz: 400, q: 0.4, gain: 0.16, lfoHz: 0.14 },
   'amb-storm': { hz: 700, q: 0.7, gain: 0.34, lfoHz: 0.6 },
   'amb-river': { hz: 2400, q: 0.5, gain: 0.1, lfoHz: 0.9 },
-  'amb-land': { hz: 5000, q: 0.3, gain: 0.035, lfoHz: 0.25 },
+  'amb-land': { hz: 5000, q: 0.3, gain: 0.02, lfoHz: 0.25 },
   'amb-none': null,
 }
 
@@ -155,6 +168,7 @@ export class AudioPlayer {
   private ambientId = 'amb-none'
   private muted = false
   private log: CueLogEntry[] = []
+  private chirpTimer: ReturnType<typeof setInterval> | null = null
 
   /** Call from a user-gesture handler; browsers gate audio until then. */
   unlock(): void {
@@ -166,7 +180,16 @@ export class AudioPlayer {
       this.ctx = new AudioContext()
       this.master = this.ctx.createGain()
       this.master.gain.value = this.muted ? 0 : 0.8
-      this.master.connect(this.ctx.destination)
+      // a gentle limiter so stacked cues (attack thumps over a storm bed)
+      // squash instead of clipping
+      const comp = this.ctx.createDynamicsCompressor()
+      comp.threshold.value = -12
+      comp.knee.value = 20
+      comp.ratio.value = 6
+      comp.attack.value = 0.003
+      comp.release.value = 0.25
+      this.master.connect(comp)
+      comp.connect(this.ctx.destination)
     } catch {
       this.ctx = null // no audio — the game plays silent
     }
@@ -195,13 +218,54 @@ export class AudioPlayer {
       if (this.log.length > 300) this.log.splice(0, this.log.length - 300)
       if (!this.ctx || !this.master) continue
       if (cue.id.startsWith('amb-')) this.setAmbient(cue.id)
-      else synthesize(this.ctx, this.master, cue.id, this.ctx.currentTime)
+      else
+        // a whisper of detune and level variation so the hundredth trade
+        // chime of a career doesn't sound stamped from the same die
+        synthesize(this.ctx, this.master, cue.id, this.ctx.currentTime, {
+          detune: (Math.random() * 2 - 1) * 12,
+          gain: 0.92 + Math.random() * 0.16,
+        })
+    }
+  }
+
+  /** A short bright bird call — two quick descending pips over the land bed. */
+  private chirp(): void {
+    if (!this.ctx || !this.master || this.muted) return
+    const t = this.ctx.currentTime
+    const base = 2600 + Math.random() * 1200
+    const g = this.ctx.createGain()
+    g.gain.value = 1
+    g.connect(this.master)
+    for (let i = 0; i < 2 + Math.floor(Math.random() * 2); i++) {
+      const o = this.ctx.createOscillator()
+      o.type = 'sine'
+      const at = t + i * (0.09 + Math.random() * 0.05)
+      o.frequency.setValueAtTime(base * (1 - i * 0.12), at)
+      o.frequency.exponentialRampToValueAtTime(base * (1 - i * 0.12) * 0.82, at + 0.05)
+      const e = this.ctx.createGain()
+      e.gain.setValueAtTime(0, at)
+      e.gain.linearRampToValueAtTime(0.05, at + 0.008)
+      e.gain.exponentialRampToValueAtTime(0.001, at + 0.06)
+      o.connect(e)
+      e.connect(g)
+      o.start(at)
+      o.stop(at + 0.1)
     }
   }
 
   private setAmbient(id: string): void {
     if (!this.ctx || !this.master || id === this.ambientId) return
     this.ambientId = id
+    // birdsong belongs to the land bed alone
+    if (this.chirpTimer) {
+      clearInterval(this.chirpTimer)
+      this.chirpTimer = null
+    }
+    if (id === 'amb-land') {
+      this.chirpTimer = setInterval(() => {
+        if (Math.random() < 0.55) this.chirp()
+      }, 2800)
+    }
     // fade out the old bed
     if (this.ambientGain) {
       this.ambientGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.4)

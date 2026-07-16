@@ -22,7 +22,8 @@ import {
 } from './game/chronicle'
 import { buildTileset } from './art/tileset'
 import { Input } from './engine/input'
-import { centerCamera, type Camera } from './engine/camera'
+import { centerCamera, zoomFor, type Camera } from './engine/camera'
+import { beginHits, hitAt } from './ui/hit'
 import { startLoop } from './engine/loop'
 import { renderWorld, renderMinimap, renderStorms, type RenderCtx } from './engine/renderer'
 import { drawHud, drawWindIndicator } from './ui/hud'
@@ -85,6 +86,26 @@ const player = new AudioPlayer()
 let audioEvents: GameEvent[] = []
 let prevSnap: AudioSnapshot | null = null
 window.addEventListener('keydown', () => player.unlock())
+
+// --- mouse: canvas UI elements are clickable -------------------------------
+const clicks: string[] = []
+function canvasPoint(e: MouseEvent): { x: number; y: number } {
+  const r = canvas.getBoundingClientRect()
+  return {
+    x: ((e.clientX - r.left) * canvas.width) / r.width,
+    y: ((e.clientY - r.top) * canvas.height) / r.height,
+  }
+}
+canvas.addEventListener('click', (e) => {
+  player.unlock()
+  const p = canvasPoint(e)
+  const id = hitAt(p.x, p.y)
+  if (id) clicks.push(id)
+})
+canvas.addEventListener('mousemove', (e) => {
+  const p = canvasPoint(e)
+  canvas.style.cursor = hitAt(p.x, p.y) ? 'pointer' : 'default'
+})
 
 function snapshot(): AudioSnapshot {
   const underfoot =
@@ -290,6 +311,7 @@ function nearestVillage(): Village | null {
 }
 
 function update(dt: number) {
+  const click = clicks.shift() ?? null
   if (input.pressed('m')) {
     const muted = player.toggleMute()
     flash = { text: muted ? 'Sound muted (M to unmute)' : 'Sound on', t: 1.5 }
@@ -319,20 +341,20 @@ function update(dt: number) {
   }
 
   if (screen === 'start') {
-    if (input.pressed('enter')) {
+    if (input.pressed('enter') || click === 'start-new') {
       outfit = defaultOutfit()
       outfitRow = 0
       career = makeCareer()
       nextVoyage = false
       screen = 'outfit'
-    } else if (input.pressed('c')) {
+    } else if (input.pressed('c') || click === 'start-continue') {
       const save = loadSave()
       if (save) {
         world = restoreWorld(save)
         encounter = null
         screen = 'playing'
       }
-    } else if (input.pressed('r')) {
+    } else if (input.pressed('r') || click === 'start-reroll') {
       // roll a new world to explore
       world = newWorld(String(1 + (Math.floor(performance.now() * 7) % 99999)))
     }
@@ -346,9 +368,18 @@ function update(dt: number) {
     if (input.pressed('up')) outfitRow = (outfitRow + fields.length - 1) % fields.length
     if (input.pressed('down')) outfitRow = (outfitRow + 1) % fields.length
     const budget = budgetFor(career.banked)
+    if (click?.startsWith('outfit-row-')) outfitRow = Number(click.slice('outfit-row-'.length))
+    if (click?.startsWith('outfit-dec-')) {
+      outfitRow = Number(click.slice('outfit-dec-'.length))
+      outfit = adjustOutfit(outfit, fields[outfitRow], -1, budget)
+    }
+    if (click?.startsWith('outfit-inc-')) {
+      outfitRow = Number(click.slice('outfit-inc-'.length))
+      outfit = adjustOutfit(outfit, fields[outfitRow], 1, budget)
+    }
     if (input.pressed('left')) outfit = adjustOutfit(outfit, fields[outfitRow], -1, budget)
     if (input.pressed('right')) outfit = adjustOutfit(outfit, fields[outfitRow], 1, budget)
-    if (input.pressed('enter')) {
+    if (input.pressed('enter') || click === 'outfit-go') {
       if (nextVoyage) embarkVoyage()
       else embark()
     }
@@ -359,7 +390,7 @@ function update(dt: number) {
   }
 
   if (screen === 'spain') {
-    if (input.pressed('enter')) {
+    if (input.pressed('enter') || click === 'spain-go') {
       outfit = defaultOutfit()
       outfitRow = 0
       nextVoyage = true
@@ -371,7 +402,7 @@ function update(dt: number) {
   }
 
   if (screen === 'over') {
-    if (input.pressed('enter')) {
+    if (input.pressed('enter') || click === 'over-restart') {
       world = newWorld(String(1492 + (Math.floor(performance.now()) % 9999)))
       outfit = defaultOutfit()
       outfitRow = 0
@@ -389,10 +420,10 @@ function update(dt: number) {
   if (flash.t > 0) flash.t -= sdt
 
   if (encounter) {
-    if (input.pressed('1')) chooseEncounter('trade')
-    else if (input.pressed('2')) chooseEncounter('gift')
-    else if (input.pressed('3')) chooseEncounter('attack')
-    else if (input.pressed('esc')) encounter = null
+    if (input.pressed('1') || click === 'enc-1') chooseEncounter('trade')
+    else if (input.pressed('2') || click === 'enc-2') chooseEncounter('gift')
+    else if (input.pressed('3') || click === 'enc-3') chooseEncounter('attack')
+    else if (input.pressed('esc') || click === 'enc-esc') encounter = null
   } else {
     const { dx, dy } = input.axis()
     if (world.sailing) {
@@ -504,7 +535,7 @@ function update(dt: number) {
     }
   }
 
-  centerCamera(world.cam, explorer.x, explorer.y, canvas.width, canvas.height, map.width, map.height)
+  centerCamera(world.cam, explorer.x, explorer.y, canvas.width, canvas.height, map.width, map.height, zoomFor(canvas.width))
   input.endFrame()
   pumpAudio()
 }
@@ -551,7 +582,8 @@ function chooseEncounter(action: 'trade' | 'gift' | 'attack') {
 // --- render --------------------------------------------------------------
 
 function render() {
-  const rc: RenderCtx = { ctx, viewW: canvas.width, viewH: canvas.height, tileset }
+  beginHits()
+  const rc: RenderCtx = { ctx, viewW: canvas.width, viewH: canvas.height, tileset, zoom: zoomFor(canvas.width) }
 
   if (screen === 'start') {
     drawStartScreen(ctx, canvas.width, canvas.height, world.seedStr, loadSave() !== null, loadChronicle())
@@ -573,14 +605,14 @@ function render() {
         ? 'The people watch you with open curiosity.'
         : 'The people keep their distance, wary of the stranger.'
     drawWalkin(ctx, canvas.width, canvas.height, walkin, tileset, note)
-    if (flash.t > 0) drawResult(ctx, canvas.width, canvas.height, flash.text)
+    if (flash.t > 0) drawResult(ctx, canvas.width, canvas.height, flash.text, 12)
     return
   }
 
   renderWorld(rc, world.cam, world.map, world.fog, world.villages, world.explorer, world.ships, world.activeShip, world.sailing, world.outposts)
   renderStorms(rc, world.cam, world.weather, world.state.elapsed, world.map, world.fog)
   const hudH = drawHud(ctx, canvas.width, world.state, career.banked)
-  renderMinimap(rc, world.map, world.fog, world.explorer, world.villages, world.ships, world.outposts, hudH + 12)
+  renderMinimap(rc, world.map, world.fog, world.explorer, world.villages, world.ships, world.outposts, hudH + 12, world.cam)
   if (world.sailing) {
     const wind = windAt(world.weather, world.state.elapsed)
     drawWindIndicator(ctx, canvas.width, wind.angle, wind.strength, hudH + 12)
@@ -637,7 +669,8 @@ function render() {
     ctx.fillText('E interact · F fort · M sound · Esc menu', 12, canvas.height - 12)
   }
 
-  if (flash.t > 0 && screen === 'playing') drawResult(ctx, canvas.width, canvas.height, flash.text)
+  // the banner yields while a decision panel is up — no overlapping chrome
+  if (flash.t > 0 && screen === 'playing' && !encounter) drawResult(ctx, canvas.width, canvas.height, flash.text, hudH + 10)
   if (encounter) drawEncounter(ctx, canvas.width, canvas.height, encounter, world.state.goods, world.state.fear)
 
   if (screen === 'over') {
