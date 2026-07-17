@@ -345,6 +345,24 @@ export class AudioPlayer {
     }
   }
 
+  /** Release all timers and close the audio context. */
+  destroy(): void {
+    if (this.texTimer) {
+      clearInterval(this.texTimer)
+      this.texTimer = null
+    }
+    if (this.themeTimer) {
+      clearInterval(this.themeTimer)
+      this.themeTimer = null
+    }
+    if (this.chirpTimer) {
+      clearInterval(this.chirpTimer)
+      this.chirpTimer = null
+    }
+    void this.ctx?.close()
+    this.ctx = null
+  }
+
   private setAmbient(id: string): void {
     if (!this.ctx || !this.master || id === this.ambientId) return
     this.ambientId = id

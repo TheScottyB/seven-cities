@@ -500,7 +500,7 @@ export function drawEncounter(
  * Transient notice as a slim banner under the HUD — it informs without
  * hiding the ship, the storm, or the village it is talking about.
  */
-export function drawResult(ctx: CanvasRenderingContext2D, viewW: number, viewH: number, text: string, top = 64): void {
+export function drawResult(ctx: CanvasRenderingContext2D, viewW: number, _viewH: number, text: string, top = 64): void {
   ctx.font = "16px 'Courier New', monospace"
   const w = Math.min(ctx.measureText(text).width + 48, viewW - 16)
   const x = (viewW - w) / 2
