@@ -1,6 +1,7 @@
 import type { Village } from '../world/villages'
 import { makeRng, type Rng } from '../world/rng'
 import { effectiveTemperament } from './encounter'
+import { Facing, GAIT_CYCLE } from './explorer'
 
 /**
  * The walk-in scene: entering a village puts you on foot among its people.
@@ -31,6 +32,9 @@ export interface WalkinScene {
   chief: { x: number; y: number }
   px: number
   py: number
+  /** which way the conquistador is turned, and how far into his stride */
+  facing: number
+  gait: number
   villagers: Villager[]
   hostile: boolean
   /** effective temperament 0..1 — the renderer tints the light with it */
@@ -99,6 +103,8 @@ export function makeScene(v: Village, fear: number): WalkinScene {
     chief: { x: w / 2, y: 1.5 },
     px: w / 2,
     py: h - 1.2,
+    facing: Facing.N, // he enters from the south, looking up the path
+    gait: 0,
     villagers,
     hostile: eff < 0.3,
     mood: eff,
@@ -118,11 +124,22 @@ export function isBlockedAt(s: WalkinScene, x: number, y: number): boolean {
 export function tickScene(s: WalkinScene, dx: number, dy: number, dt: number): WalkinStatus {
   s.t += dt
   if (dx !== 0 || dy !== 0) {
+    const x0 = s.px
+    const y0 = s.py
     const len = Math.hypot(dx, dy)
     const nx = s.px + (dx / len) * PLAYER_SPEED * dt
     const ny = s.py + (dy / len) * PLAYER_SPEED * dt
     if (!isBlockedAt(s, nx, s.py)) s.px = nx
     if (!isBlockedAt(s, s.px, ny)) s.py = ny
+    // read the turn off what actually happened, not off the keys — sliding
+    // along a hut would otherwise face him into the wall
+    const ddx = s.px - x0
+    const ddy = s.py - y0
+    if (ddx !== 0 || ddy !== 0) {
+      s.facing =
+        Math.abs(ddx) > Math.abs(ddy) ? (ddx > 0 ? Facing.E : Facing.W) : ddy > 0 ? Facing.S : Facing.N
+      s.gait = (s.gait + Math.hypot(ddx, ddy) * 2) % GAIT_CYCLE
+    }
   }
   if (s.py > s.h - 0.3) return 'left'
   if (Math.hypot(s.px - s.chief.x, s.py - s.chief.y) < 0.9) return 'chief'

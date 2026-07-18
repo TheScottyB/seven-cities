@@ -29,7 +29,11 @@ import { Input } from './engine/input'
 import { centerCamera, zoomFor, type Camera } from './engine/camera'
 import { beginHits, hitAt, setHover } from './ui/hit'
 import { startLoop } from './engine/loop'
-import { renderWorld, renderMinimap, renderStorms, type RenderCtx } from './engine/renderer'
+import { renderWorld, renderMinimap, renderStorms, invalidateMinimap, type RenderCtx, type WorldArt } from './engine/renderer'
+import { buildRelief } from './art/relief'
+import { buildEdges, buildEdgeKeys } from './art/edges'
+import { buildDeckles } from './art/paper'
+import { buildSpriteBank } from './art/spritebank'
 import { drawHud, drawWindIndicator } from './ui/hud'
 import { drawStartScreen, drawOutfitScreen, drawSpainScreen, drawEncounter, drawGameOver, drawResult } from './ui/panels'
 import { seedFromString } from './world/rng'
@@ -72,6 +76,23 @@ interface World {
 }
 
 const tileset = buildTileset()
+// the fringe overlays, torn paper edges and sprite cells are world-independent
+const edgeSet = buildEdges()
+const deckleSet = buildDeckles()
+const spriteBank = buildSpriteBank()
+let worldArt: WorldArt
+
+/** Everything the renderer needs precomputed for a freshly generated world. */
+function buildWorldArt(map: ReturnType<typeof generateMap>): WorldArt {
+  invalidateMinimap()
+  return {
+    relief: buildRelief(map),
+    edges: edgeSet,
+    edgeKeys: buildEdgeKeys(map.tiles, map.width, map.height),
+    deckles: deckleSet,
+    sprites: spriteBank,
+  }
+}
 let screen: Screen = 'start'
 let world: World = newWorld('1492')
 let outfit: Outfit = defaultOutfit()
@@ -190,6 +211,7 @@ function newWorld(seedStr: string): World {
   const fog = makeFog(map.width, map.height)
   const explorer = makeExplorer(map)
   reveal(fog, Math.floor(explorer.x), Math.floor(explorer.y), REVEAL_RADIUS)
+  worldArt = buildWorldArt(map)
   return {
     seedStr, map, villages, fog, state: makeState(), explorer,
     ships: findMoorings(map, 1), activeShip: 0, sailing: false,
@@ -310,6 +332,7 @@ function restoreWorld(save: SaveData): World {
   career = { ...save.career }
   w.fog.seen = unpackBits(save.fogSeenB64, w.fog.seen.length)
   w.fog.revealedCount = w.fog.seen.reduce((a, b) => a + b, 0)
+  invalidateMinimap() // the restored fog reveals far more than the fresh world did
   // the map (and thus village placement) regenerates identically from the
   // seed; only the mutable per-village fields need restoring
   if (save.villages.length === w.villages.length) {
@@ -655,15 +678,15 @@ function render() {
       : eff > 0.66
         ? 'The people watch you with open curiosity.'
         : 'The people keep their distance, wary of the stranger.'
-    drawWalkin(ctx, canvas.width, canvas.height, walkin, tileset, note, performance.now() / 1000)
+    drawWalkin(ctx, canvas.width, canvas.height, walkin, tileset, note, performance.now() / 1000, spriteBank)
     if (flash.t > 0) drawResult(ctx, canvas.width, canvas.height, flash.text, 12)
     return
   }
 
-  renderWorld(rc, world.cam, world.map, world.fog, world.villages, world.explorer, world.ships, world.activeShip, world.sailing, world.outposts)
+  renderWorld(rc, world.cam, world.map, world.fog, world.villages, world.explorer, world.ships, world.activeShip, world.sailing, world.outposts, worldArt)
   renderStorms(rc, world.cam, world.weather, world.state.elapsed, world.map, world.fog)
   const hudH = drawHud(ctx, canvas.width, world.state, career.banked)
-  renderMinimap(rc, world.map, world.fog, world.explorer, world.villages, world.ships, world.outposts, hudH + 12, world.cam)
+  renderMinimap(rc, world.map, world.fog, world.explorer, world.villages, world.ships, world.outposts, hudH + 12, world.cam, worldArt.relief)
   if (world.sailing) {
     const wind = windAt(world.weather, world.state.elapsed)
     drawWindIndicator(ctx, canvas.width, wind.angle, wind.strength, hudH + 12)

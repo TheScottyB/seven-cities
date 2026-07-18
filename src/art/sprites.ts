@@ -223,6 +223,8 @@ export function drawFort(g: CanvasRenderingContext2D, cx: number, cy: number, t 
   for (let i = 0; i < 5; i++) g.fillRect(cx - s * 0.42 + i * s * 0.2, cy - s * 0.38, s * 0.08, s * 0.12)
   g.fillStyle = '#2a1c10'
   g.fillRect(cx - s * 0.1, cy + s * 0.05, s * 0.2, s * 0.27)
+  g.fillStyle = '#ffc460' // the garrison keeps a lamp burning
+  g.fillRect(cx - s * 0.3, cy - s * 0.1, 2, 2)
   // banner, rippling in the wind when animated
   const flut = t >= 0 ? Math.sin(t * 6) : 0
   g.strokeStyle = '#3a2a18'
@@ -287,10 +289,38 @@ export function drawVillage(
     g.lineTo(cx + ox * s + s * 0.16, cy)
     g.fill()
   }
-  if (golden && discovered) {
-    g.strokeStyle = '#fff2b0'
-    g.lineWidth = 1
-    g.strokeRect(cx - s * 0.42, cy - s * 0.36, s * 0.84, s * 0.78)
+  // hearthlight in the doorways — you spot a settlement before you can
+  // resolve its roofs. Drawn as hard pixels on the tile grid: no gradient,
+  // no bloom, nothing that would veil the terrain a player must read.
+  g.fillStyle = golden ? '#ffe27a' : '#ffc460'
+  for (const ox of [-0.28, 0.28]) g.fillRect(cx + ox * s - 1, cy + s * 0.06, 2, 2)
+  if (golden) {
+    g.fillRect(cx - 1, cy + s * 0.06, 2, 2)
+    if (discovered) {
+      // a charted City of Gold burns as a beacon: stepped rings of flat
+      // colour, quantized to half-tiles so they never crawl against the grid
+      const pulse = t >= 0 ? 0.5 + 0.5 * Math.sin(t * 1.6) : 1
+      // stepped as a diamond, not a square — three stacked bars per ring, so
+      // the light reads as radiating rather than as a box laid over the map
+      const rings: [number, number][] = [
+        [s * 0.8, 0.15],
+        [s * 1.2, 0.08],
+      ]
+      for (const [r, a] of rings) {
+        g.fillStyle = `rgba(244,196,48,${(a * (0.65 + 0.35 * pulse)).toFixed(3)})`
+        const cy0 = Math.round(cy - r * 0.55)
+        const band = Math.max(1, Math.round(r * 0.37))
+        for (let k = 0; k < 3; k++) {
+          const w = Math.round(r * 2 * (k === 1 ? 1 : 0.58))
+          g.fillRect(Math.round(cx - w / 2), cy0 + k * band, w, band)
+        }
+      }
+      // the four-point star that makes it look struck rather than rendered
+      g.fillStyle = '#fff2b0'
+      const arm = Math.round(s * 0.5 * (0.7 + 0.3 * pulse))
+      g.fillRect(Math.round(cx - arm), Math.round(cy - s * 0.1), arm * 2, 1)
+      g.fillRect(Math.round(cx), Math.round(cy - s * 0.1) - arm, 1, arm * 2)
+    }
   }
   // hearth smoke drifting up from the middle roof
   if (t >= 0) {

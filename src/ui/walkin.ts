@@ -1,11 +1,12 @@
 import type { WalkinScene } from '../game/walkin'
 import type { Tileset } from '../art/tileset'
+import { DECORS, tileIndex } from '../art/relief'
 import { TILE } from '../world/tiles'
+import { drawExplorerSprite, type SpriteBank } from '../art/spritebank'
 import {
   drawVillager,
   drawChief,
   drawHut,
-  drawExplorer,
   drawShadow,
   drawFire,
   drawPots,
@@ -13,8 +14,6 @@ import {
   drawCrop,
   drawIdol,
 } from '../art/sprites'
-
-const SCENE_PX_MAX = 40 // walk-in tiles render larger than the overworld
 
 /** roofs alternate through weathered browns; a City of Gold gilds them all */
 const ROOFS = ['#7a4a24', '#6f451f', '#835028']
@@ -27,15 +26,15 @@ export function drawWalkin(
   tileset: Tileset,
   hostileNote: string,
   t = 0,
+  sprites: SpriteBank,
 ): void {
   ctx.fillStyle = '#0a0a12'
   ctx.fillRect(0, 0, viewW, viewH)
 
-  // scale the scene down on small windows rather than clipping it
-  const SCENE_PX = Math.max(
-    16,
-    Math.min(SCENE_PX_MAX, Math.floor((viewW - 24) / scene.w), Math.floor((viewH - 90) / scene.h)),
-  )
+  // integer scaling only — the walk-in draws the biggest sprites in the game,
+  // and a fractional factor is exactly what softens them
+  const fit = Math.min(Math.floor((viewW - 24) / scene.w), Math.floor((viewH - 90) / scene.h))
+  const SCENE_PX = 16 * Math.max(1, Math.floor(fit / 16))
   const sw = scene.w * SCENE_PX
   const sh = scene.h * SCENE_PX
   // integer origin + nearest-neighbour scaling: no seams between ground tiles
@@ -51,7 +50,10 @@ export function drawWalkin(
   for (let ty = 0; ty < scene.h; ty++) {
     for (let tx = 0; tx < scene.w; tx++) {
       const v = ((tx * 73856093) ^ (ty * 19349663)) >>> 0
-      ctx.drawImage(grass[v % grass.length], ox + tx * SCENE_PX, oy + ty * SCENE_PX, SCENE_PX, SCENE_PX)
+      // pick along the decor axis only — sampling the raw array would stride
+      // across phase/shade levels and blotch the ground
+      const frame = tileIndex(TILE.GRASS, v % DECORS[TILE.GRASS], 0, 0)
+      ctx.drawImage(grass[frame], ox + tx * SCENE_PX, oy + ty * SCENE_PX, SCENE_PX, SCENE_PX)
     }
   }
   ctx.imageSmoothingEnabled = smoothing
@@ -108,12 +110,14 @@ export function drawWalkin(
     drawVillager(ctx, sx(vg.x), sy(vg.y) + bob, SCENE_PX, i)
   })
 
-  drawShadow(ctx, sx(scene.px), sy(scene.py + 0.2), SCENE_PX * 0.24)
-  // reuse the overworld conquistador at scene scale via transform
+  // the conquistador at the largest size he is ever drawn — integer-scaled,
+  // so the walk-in shows off the sprite work rather than softening it
+  const scale = SCENE_PX / 16
   ctx.save()
-  ctx.translate(sx(scene.px), sy(scene.py))
-  ctx.scale(SCENE_PX / 16, SCENE_PX / 16)
-  drawExplorer(ctx, 0, 0)
+  ctx.translate(Math.round(sx(scene.px)), Math.round(sy(scene.py)))
+  ctx.scale(scale, scale)
+  ctx.imageSmoothingEnabled = false
+  drawExplorerSprite(ctx, sprites, 0, 7, scene.facing, scene.gait)
   ctx.restore()
 
   // the light of the moment: hostile dusk-red, wary overcast, friendly warmth

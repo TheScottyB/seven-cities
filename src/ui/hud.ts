@@ -86,11 +86,15 @@ export function drawHud(ctx: CanvasRenderingContext2D, viewW: number, s: GameSta
   }
 
   const height = 40 + row * 24
-  ctx.fillStyle = 'rgba(0,0,0,0.6)'
+  // an inked vellum band with a gold rule under it, rather than the
+  // translucent black strip of a web app
+  ctx.fillStyle = 'rgba(24,19,12,0.88)'
   ctx.fillRect(0, 0, viewW, height)
+  ctx.fillStyle = 'rgba(244,196,48,0.45)'
+  ctx.fillRect(0, height - 1, viewW, 1)
   for (const it of placed) {
     const y = 20 + it.row * 24
-    ctx.fillStyle = '#8a8a94'
+    ctx.fillStyle = '#9a8a6a'
     ctx.fillText(it.label + ':', it.x, y)
     ctx.fillStyle = it.color
     ctx.fillText(it.value, it.x + it.lw, y)

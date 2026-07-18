@@ -1,7 +1,19 @@
 import { GameMap } from '../world/mapgen'
 import { TILE, isWalkable } from '../world/tiles'
+import { Facing, updateMover, type PartialMover } from './explorer'
 
-export interface Ship {
+// Facing/Mover live in explorer.ts and are re-exported here so there is exactly
+// ONE definition — two copies would drift the moment either one is edited.
+export { Facing, updateMover, GAIT_CYCLE, GAIT_RATE } from './explorer'
+export type { Mover, PartialMover, FacingValue } from './explorer'
+
+/**
+ * The sprite fields are OPTIONAL on a ship. Saves persist bare {x, y} and the
+ * fleet is rebuilt from those literals on load; requiring the fields would
+ * break that restore path for nothing, since moveShip fills them in on the
+ * first step anyway.
+ */
+export interface Ship extends PartialMover {
   x: number
   y: number
 }
@@ -30,12 +42,13 @@ export function findMoorings(map: GameMap, n: number): Ship[] {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue // ring only
         const x = landing.x + dx
         const y = landing.y + dy
-        if (isOcean(map, x, y)) moorings.push({ x: x + 0.5, y: y + 0.5 })
+        if (isOcean(map, x, y)) moorings.push({ x: x + 0.5, y: y + 0.5, facing: Facing.E, gait: 0, moving: false })
       }
     }
   }
   // no ocean near the landing would mean a landlocked landing — mapgen prevents it
-  while (moorings.length < n) moorings.push({ x: landing.x + 0.5, y: landing.y + 0.5 })
+  while (moorings.length < n)
+    moorings.push({ x: landing.x + 0.5, y: landing.y + 0.5, facing: Facing.E, gait: 0, moving: false })
   return moorings
 }
 
@@ -65,11 +78,19 @@ export function moveShip(
   }
   vx += driftX
   vy += driftY
-  if (vx === 0 && vy === 0) return
+  if (vx === 0 && vy === 0) {
+    ship.moving = false
+    return
+  }
+  const x0 = ship.x
+  const y0 = ship.y
   const nx = ship.x + vx * dt
   const ny = ship.y + vy * dt
   if (isOcean(map, nx, ship.y)) ship.x = nx
   if (isOcean(map, ship.x, ny)) ship.y = ny
+  // Derived from the displacement, so a coast-scrape or a squall turns the
+  // hull the way it actually went — not the way the helm asked.
+  updateMover(ship, x0, y0)
 }
 
 /** Walkable land tiles adjacent (8-way) to the ship — places you can step ashore. */

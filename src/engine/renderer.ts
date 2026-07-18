@@ -3,11 +3,15 @@ import { stormCenter, type Weather } from '../game/weather'
 import { Fog, isSeen } from '../world/fog'
 import { Explorer } from '../game/explorer'
 import type { Village } from '../world/villages'
-import { Camera, worldToScreen } from './camera'
-import { TILE_PX, type Tileset } from '../art/tileset'
-import { drawExplorer, drawVillage, drawShip, drawCanoe, drawFort, drawShadow } from '../art/sprites'
+import { Camera } from './camera'
+import { TILE_PX, DEPTH_RAMP, type Tileset } from '../art/tileset'
+import { drawVillage, drawCanoe, drawFort, drawShadow } from '../art/sprites'
+import { drawExplorerSprite, drawShipSprite, type SpriteBank } from '../art/spritebank'
 import type { Outpost } from '../game/outposts'
 import { TILE } from '../world/tiles'
+import { PHASES, SHADES, type Relief } from '../art/relief'
+import type { EdgeSet } from '../art/edges'
+import { paperPattern, type DeckleSet } from '../art/paper'
 
 export interface RenderCtx {
   ctx: CanvasRenderingContext2D
@@ -18,12 +22,49 @@ export interface RenderCtx {
   zoom: number
 }
 
+/** Everything precomputed for the current world, handed to the draw loop. */
+export interface WorldArt {
+  relief: Relief
+  edges: EdgeSet
+  edgeKeys: Uint16Array
+  deckles: DeckleSet
+  sprites: SpriteBank
+}
+
 /** How close (in tiles) the explorer must be for a tile to count as "in view". */
 const VIEW_RADIUS = 5
 
 /** deterministic per-tile hash for variant selection */
 function tileHash(x: number, y: number): number {
   return ((x * 73856093) ^ (y * 19349663)) >>> 0
+}
+
+/**
+ * A 256-entry sine table. The wind and the surf both want a sine of something
+ * linear in (x, y, t) on a lot of tiles per frame; this turns that into an
+ * integer index and an array read.
+ */
+const SIN_LUT = new Float32Array(256)
+for (let i = 0; i < 256; i++) SIN_LUT[i] = Math.sin((i / 256) * Math.PI * 2)
+const SIN_SCALE = 256 / (Math.PI * 2)
+function fastSin(a: number): number {
+  return SIN_LUT[(a * SIN_SCALE) & 255]
+}
+
+/**
+ * The screen origin, snapped to a whole device pixel.
+ *
+ * This matters more than it looks. The camera tracks a float position moving
+ * at eight tiles a second, so without snapping every drawImage lands on a
+ * fractional pixel and nearest-neighbour rounding flips tile by tile as you
+ * walk — the entire terrain field quietly boils. Snapping the ORIGIN (not the
+ * camera) also handles odd canvas widths, where viewW/2 is itself fractional.
+ */
+export function originFor(cam: Camera, viewW: number, viewH: number) {
+  return {
+    ox: Math.round(viewW / 2 - cam.x * TILE_PX),
+    oy: Math.round(viewH / 2 - cam.y * TILE_PX),
+  }
 }
 
 export function renderWorld(
@@ -33,21 +74,25 @@ export function renderWorld(
   fog: Fog,
   villages: Village[],
   explorer: Explorer,
-  ships: { x: number; y: number }[],
+  ships: { x: number; y: number; facing?: number }[],
   activeShip: number,
   sailing: boolean,
   outposts: Outpost[],
+  art: WorldArt,
 ): void {
   const { ctx, zoom, tileset } = rc
-  ctx.fillStyle = '#05060a'
+
+  // the unexplored world is blank chart paper, not a void
+  ctx.imageSmoothingEnabled = false
+  ctx.fillStyle = paperPattern(ctx, zoom)
   ctx.fillRect(0, 0, rc.viewW, rc.viewH)
 
-  // the whole world view renders in tile-pixel space, scaled up by the zoom
   ctx.save()
   ctx.scale(zoom, zoom)
   ctx.imageSmoothingEnabled = false
   const viewW = rc.viewW / zoom
   const viewH = rc.viewH / zoom
+  const { ox, oy } = originFor(cam, viewW, viewH)
 
   const cols = Math.ceil(viewW / TILE_PX) + 2
   const rows = Math.ceil(viewH / TILE_PX) + 2
@@ -56,90 +101,168 @@ export function renderWorld(
 
   const now = performance.now()
   const t = now / 1000
+  const W = map.width
+  const H = map.height
+  const tiles = map.tiles
+  const { base } = art.relief
+  const { edges, edgeKeys, deckles } = art
+
   const landAt = (x: number, y: number) => {
-    if (x < 0 || y < 0 || x >= map.width || y >= map.height) return false
-    const tl = map.tiles[y * map.width + x]
+    if (x < 0 || y < 0 || x >= W || y >= H) return false
+    const tl = tiles[y * W + x]
     return tl !== TILE.OCEAN && tl !== TILE.RIVER
   }
+  const at = (x: number, y: number, fallback: number) =>
+    x < 0 || y < 0 || x >= W || y >= H ? fallback : tiles[y * W + x]
+  // out of bounds counts as unexplored, so the map border deckles too. The
+  // bounds check must come first: isSeen does not range-check, and a negative
+  // x would silently read the previous row.
+  const unseen = (x: number, y: number) => x < 0 || y < 0 || x >= W || y >= H || !isSeen(fog, x, y)
+
+  const R2 = VIEW_RADIUS * VIEW_RADIUS
 
   for (let ty = startY; ty < startY + rows; ty++) {
     for (let tx = startX; tx < startX + cols; tx++) {
-      if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) continue
-      const { sx, sy } = worldToScreen(cam, viewW, viewH, tx, ty)
-      if (!isSeen(fog, tx, ty)) {
-        ctx.fillStyle = '#05060a'
-        ctx.fillRect(sx, sy, TILE_PX, TILE_PX)
-        continue
+      if (tx < 0 || ty < 0 || tx >= W || ty >= H) continue
+      if (!isSeen(fog, tx, ty)) continue // paper already covers it
+      const i = ty * W + tx
+      const sx = ox + tx * TILE_PX
+      const sy = oy + ty * TILE_PX
+      const tl = tiles[i]
+      const frames = tileset.get(tl)!
+      const nPhase = PHASES[tl] ?? 1
+      let phase = 0
+      if (tl === TILE.OCEAN || tl === TILE.RIVER) {
+        // keep the per-tile hash: it is what stops the whole sea moving in
+        // lockstep. Without it the ocean marches in vertical stripes.
+        phase = (tileHash(tx, ty) + Math.floor(now / 450 + tx * 0.7)) % nPhase
+      } else if (nPhase > 1) {
+        // one wind wave rolling diagonally across the continent
+        const s = fastSin(t * 0.9 + (tx + ty) * 0.35)
+        phase = s > 0.33 ? 2 : s < -0.33 ? 1 : 0
       }
-      const tl = map.tiles[ty * map.width + tx]
-      const variants = tileset.get(tl)!
-      const water = tl === TILE.OCEAN || tl === TILE.RIVER
-      // water animates with a per-column phase offset so the swell travels
-      // across the sea instead of the whole ocean blinking in unison
-      const waterFrame = water ? Math.floor(now / 450 + tx * 0.7) : 0
-      const idx = (tileHash(tx, ty) + waterFrame) % variants.length
-      ctx.drawImage(variants[idx], sx, sy)
+      ctx.drawImage(frames[base[i] + phase * (SHADES[tl] ?? 1)], sx, sy)
 
-      // shoreline foam where the sea meets land
+      // dithered fringe where a higher-ranked terrain bleeds in
+      const ek = edgeKeys[i]
+      if (ek) {
+        const ov = edges.get(ek)
+        if (ov) ctx.drawImage(ov, sx, sy)
+      }
+
       if (tl === TILE.OCEAN) {
-        ctx.fillStyle = 'rgba(232,240,248,0.4)'
-        if (landAt(tx, ty - 1)) ctx.fillRect(sx, sy, TILE_PX, 2)
-        if (landAt(tx, ty + 1)) ctx.fillRect(sx, sy + TILE_PX - 2, TILE_PX, 2)
-        if (landAt(tx - 1, ty)) ctx.fillRect(sx, sy, 2, TILE_PX)
-        if (landAt(tx + 1, ty)) ctx.fillRect(sx + TILE_PX - 2, sy, 2, TILE_PX)
-      } else if (tl !== TILE.RIVER) {
-        // soft seams where land terrains change — defines the country
-        const at = (x: number, y: number) =>
-          x < 0 || y < 0 || x >= map.width || y >= map.height ? tl : map.tiles[y * map.width + x]
+        // rolling surf: the band swells and brightens on the crest, but never
+        // thins below 2px — the foam stripe is how landfall is read at 2x.
+        const n = landAt(tx, ty - 1)
+        const e = landAt(tx + 1, ty)
+        const s = landAt(tx, ty + 1)
+        const w = landAt(tx - 1, ty)
+        if (n || e || s || w) {
+          // slaved to the same clock and per-column offset as the water
+          // shimmer; a second rhythm on the same tiles reads as noise.
+          const crest = fastSin(now / 450 + tx * 0.7)
+          const band = crest > 0.35 ? 3 : 2
+          ctx.fillStyle = crest > 0.35 ? 'rgba(236,244,252,0.52)' : 'rgba(232,240,248,0.4)'
+          if (n) ctx.fillRect(sx, sy, TILE_PX, band)
+          if (s) ctx.fillRect(sx, sy + TILE_PX - band, TILE_PX, band)
+          if (w) ctx.fillRect(sx, sy, band, TILE_PX)
+          if (e) ctx.fillRect(sx + TILE_PX - band, sy, band, TILE_PX)
+          // spray where the sea hits rock — highland coast reads violent,
+          // beach coast reads calm, so a landing beach is spottable at a glance
+          const rock =
+            (n && at(tx, ty - 1, 0) >= TILE.HIGHLAND) ||
+            (e && at(tx + 1, ty, 0) >= TILE.HIGHLAND) ||
+            (s && at(tx, ty + 1, 0) >= TILE.HIGHLAND) ||
+            (w && at(tx - 1, ty, 0) >= TILE.HIGHLAND)
+          if (rock && crest > 0.1) {
+            ctx.fillStyle = '#ffffff'
+            const hsh = tileHash(tx, ty)
+            for (let d = 0; d < 3; d++) {
+              const px = sx + ((hsh >> (d * 3)) % TILE_PX)
+              const py = sy + ((hsh >> (d * 3 + 5)) % TILE_PX)
+              // mix the wave phase in, or a straight cliff shows identical
+              // droplets in lockstep and reads as a bug
+              ctx.fillRect(px, py - Math.round(crest * 2), 1, 1)
+            }
+          }
+        }
+      } else if (tl !== TILE.RIVER && !ek) {
+        // the cartographic ink line, kept where no fringe was drawn
         ctx.fillStyle = 'rgba(10,14,10,0.16)'
-        const e = at(tx + 1, ty), so = at(tx, ty + 1)
+        const e = at(tx + 1, ty, tl)
+        const so = at(tx, ty + 1, tl)
         if (e !== tl && e !== TILE.OCEAN && e !== TILE.RIVER) ctx.fillRect(sx + TILE_PX - 1, sy, 1, TILE_PX)
         if (so !== tl && so !== TILE.OCEAN && so !== TILE.RIVER) ctx.fillRect(sx, sy + TILE_PX - 1, TILE_PX, 1)
       }
 
-      // charted-but-out-of-sight land fades to parchment, like ink on the map
-      const d = Math.hypot(tx + 0.5 - explorer.x, ty + 0.5 - explorer.y)
-      if (d > VIEW_RADIUS) {
-        ctx.fillStyle = 'rgba(10,12,16,0.30)'
-        ctx.fillRect(sx, sy, TILE_PX, TILE_PX)
-        ctx.fillStyle = 'rgba(214,186,132,0.14)'
+      // torn edge where charted country meets blank paper
+      let dm = 0
+      if (unseen(tx, ty - 1)) dm |= 1
+      if (unseen(tx + 1, ty)) dm |= 2
+      if (unseen(tx, ty + 1)) dm |= 4
+      if (unseen(tx - 1, ty)) dm |= 8
+      if (dm) {
+        const d = deckles.get(dm * 2 + (tileHash(tx, ty) & 1))
+        if (d) ctx.drawImage(d, sx, sy)
+      }
+
+      // Charted but out of sight: dried ink on the same sheet. One wash, kept
+      // light — it stacks on top of the depth bands, and at full strength the
+      // two together quilt the open sea into blotches.
+      const dx = tx + 0.5 - explorer.x
+      const dy = ty + 0.5 - explorer.y
+      if (dx * dx + dy * dy > R2) {
+        ctx.fillStyle = 'rgba(44,36,24,0.28)'
         ctx.fillRect(sx, sy, TILE_PX, TILE_PX)
       }
     }
   }
 
+  // entities snap to whole device pixels too — a fractional destination makes
+  // nearest-neighbour drop or double source rows, so the figure deforms as it
+  // walks. A rock-solid world under a shimmering explorer looks detached.
+  const snap = (v: number) => Math.round(v * zoom) / zoom
+  const ex = (wx: number) => snap(ox + wx * TILE_PX)
+  const ey = (wy: number) => snap(oy + wy * TILE_PX)
+
   for (const v of villages) {
     if (!isSeen(fog, v.x, v.y)) continue
-    const { sx, sy } = worldToScreen(cam, viewW, viewH, v.x + 0.5, v.y + 0.5)
+    const sx = ex(v.x + 0.5)
+    const sy = ey(v.y + 0.5)
     ctx.globalAlpha = v.depleted ? 0.55 : 1
-    drawShadow(ctx, sx, sy + TILE_PX * 0.32, TILE_PX * 0.46)
+    drawShadow(ctx, sx + 1, sy + TILE_PX * 0.32 + 1, TILE_PX * 0.46)
     drawVillage(ctx, sx, sy, v.golden, v.visited, v.depleted ? -1 : t + (v.x * 7 + v.y) * 0.61)
     ctx.globalAlpha = 1
   }
 
-  // mission forts on the trail
   for (const o of outposts) {
     if (!isSeen(fog, Math.floor(o.x), Math.floor(o.y))) continue
-    const p = worldToScreen(cam, viewW, viewH, o.x + 0.5, o.y + 0.5)
-    drawShadow(ctx, p.sx, p.sy + TILE_PX * 0.3, TILE_PX * 0.45)
-    drawFort(ctx, p.sx, p.sy, t + o.x * 0.37)
+    const sx = ex(o.x + 0.5)
+    const sy = ey(o.y + 0.5)
+    drawShadow(ctx, sx + 1, sy + TILE_PX * 0.3 + 1, TILE_PX * 0.45)
+    drawFort(ctx, sx, sy, t + o.x * 0.37)
   }
 
-  // the moored fleet, once its waters are charted
   ships.forEach((sh, i) => {
     if (sailing && i === activeShip) return // the flagship is under you
     if (!isSeen(fog, Math.floor(sh.x), Math.floor(sh.y))) return
-    const p = worldToScreen(cam, viewW, viewH, sh.x, sh.y)
-    drawShadow(ctx, p.sx, p.sy + TILE_PX * 0.3, TILE_PX * 0.42)
-    drawShip(ctx, p.sx, p.sy, t + i * 1.3)
+    drawShipSprite(ctx, art.sprites, ex(sh.x), ey(sh.y) + TILE_PX * 0.3, sh.facing, t + i * 1.3)
   })
 
-  const { sx, sy } = worldToScreen(cam, viewW, viewH, explorer.x, explorer.y)
-  const underfoot = map.tiles[Math.floor(explorer.y) * map.width + Math.floor(explorer.x)]
-  drawShadow(ctx, sx, sy + TILE_PX * 0.34, TILE_PX * 0.34)
-  if (sailing) drawShip(ctx, sx, sy, t)
-  else if (underfoot === TILE.RIVER) drawCanoe(ctx, sx, sy)
-  else drawExplorer(ctx, sx, sy)
+  const psx = ex(explorer.x)
+  const psy = ey(explorer.y)
+  const underfoot = tiles[Math.floor(explorer.y) * W + Math.floor(explorer.x)]
+  if (sailing) {
+    // While sailing the explorer IS the helm: moveShip writes facing onto the
+    // explorer, and only x/y are copied back to the moored fleet. Reading the
+    // ship's own facing here would show it frozen at its mooring heading.
+    drawShipSprite(ctx, art.sprites, psx, psy + TILE_PX * 0.3, explorer.facing, t)
+  } else if (underfoot === TILE.RIVER) {
+    drawShadow(ctx, psx + 1, psy + TILE_PX * 0.34 + 1, TILE_PX * 0.34)
+    drawCanoe(ctx, psx, psy)
+  } else {
+    drawExplorerSprite(ctx, art.sprites, psx, psy + TILE_PX * 0.42, explorer.facing, explorer.gait)
+  }
 
   ctx.restore()
 }
@@ -158,23 +281,23 @@ export function renderStorms(
   ctx.scale(zoom, zoom)
   const viewW = rc.viewW / zoom
   const viewH = rc.viewH / zoom
+  const { ox, oy } = originFor(cam, viewW, viewH)
   for (const s of weather.storms) {
     const c = stormCenter(s, t, map.width, map.height)
     const cx = Math.max(0, Math.min(map.width - 1, Math.floor(c.x)))
     const cy = Math.max(0, Math.min(map.height - 1, Math.floor(c.y)))
     if (!isSeen(fog, cx, cy)) continue
-    const p = worldToScreen(cam, viewW, viewH, c.x, c.y)
+    const px = ox + c.x * TILE_PX
+    const py = oy + c.y * TILE_PX
     const rp = s.r * TILE_PX
-    if (p.sx < -rp || p.sy < -rp || p.sx > viewW + rp || p.sy > viewH + rp) continue
-    // squall shadow
-    const grad = ctx.createRadialGradient(p.sx, p.sy, rp * 0.2, p.sx, p.sy, rp)
+    if (px < -rp || py < -rp || px > viewW + rp || py > viewH + rp) continue
+    const grad = ctx.createRadialGradient(px, py, rp * 0.2, px, py, rp)
     grad.addColorStop(0, 'rgba(16,20,38,0.55)')
     grad.addColorStop(1, 'rgba(16,20,38,0)')
     ctx.fillStyle = grad
     ctx.beginPath()
-    ctx.arc(p.sx, p.sy, rp, 0, Math.PI * 2)
+    ctx.arc(px, py, rp, 0, Math.PI * 2)
     ctx.fill()
-    // slanted rain, animated
     ctx.strokeStyle = 'rgba(210,222,240,0.35)'
     ctx.lineWidth = 1
     const anim = (performance.now() / 60) % TILE_PX
@@ -182,8 +305,8 @@ export function renderStorms(
     for (let i = 0; i < 14; i++) {
       const a = (i / 14) * Math.PI * 2
       const rr = rp * (0.25 + ((i * 37) % 60) / 100)
-      const x = p.sx + Math.cos(a) * rr
-      const y = p.sy + Math.sin(a) * rr + anim
+      const x = px + Math.cos(a) * rr
+      const y = py + Math.sin(a) * rr + anim
       ctx.moveTo(x, y)
       ctx.lineTo(x - 3, y + 6)
     }
@@ -192,7 +315,47 @@ export function renderStorms(
   ctx.restore()
 }
 
-/** Small charted-territory minimap in the corner, framed, with the current view marked. */
+// --- minimap -------------------------------------------------------------
+
+/**
+ * The charted terrain layer, redrawn only when meaningfully more of the world
+ * has been revealed. Rebuilding it every frame cost nine thousand fillRects.
+ */
+let miniCache: { canvas: HTMLCanvasElement; revealed: number; seed: number } | null = null
+
+const MINI_SIZE = 120
+
+function miniColor(t: number, band: number, hill: number): string {
+  if (t === TILE.OCEAN) return DEPTH_RAMP[band]
+  if (t === TILE.RIVER) return '#3a7ac0'
+  if (t === TILE.BEACH) return '#d8c88a'
+  if (t === TILE.MOUNTAIN) return hill >= 2 ? '#8a8a8a' : hill === 1 ? '#6d6d6d' : '#4e4e4e'
+  if (t === TILE.HIGHLAND) return hill >= 2 ? '#9a8a62' : '#7a6c48'
+  if (t === TILE.DESERT) return '#c9a850'
+  if (t === TILE.JUNGLE) return '#1f5230'
+  if (t === TILE.FOREST) return '#2f6b2a'
+  return '#3f6b34'
+}
+
+function buildMini(map: GameMap, fog: Fog, relief: Relief): HTMLCanvasElement {
+  const c = document.createElement('canvas')
+  c.width = MINI_SIZE
+  c.height = MINI_SIZE
+  const g = c.getContext('2d')!
+  const scale = MINI_SIZE / map.width
+  const step = 2
+  for (let y = 0; y < map.height; y += step) {
+    for (let x = 0; x < map.width; x += step) {
+      if (!isSeen(fog, x, y)) continue
+      const i = y * map.width + x
+      g.fillStyle = miniColor(map.tiles[i], relief.depth[i], relief.hill[i])
+      g.fillRect(x * scale, y * scale, step * scale + 0.5, step * scale + 0.5)
+    }
+  }
+  return c
+}
+
+/** Small charted-territory chart in the corner, with the current view marked. */
 export function renderMinimap(
   rc: RenderCtx,
   map: GameMap,
@@ -203,26 +366,29 @@ export function renderMinimap(
   outposts: Outpost[] = [],
   top = 52,
   cam?: Camera,
+  relief?: Relief,
 ): void {
   const { ctx, viewW } = rc
-  const size = 120
+  const size = MINI_SIZE
   const px = viewW - size - 12
   const py = top
   const scale = size / map.width
-  ctx.fillStyle = 'rgba(0,0,0,0.55)'
+
+  // vellum ground, matching the chart the world is drawn on
+  ctx.fillStyle = '#221c13'
   ctx.fillRect(px - 2, py - 2, size + 4, size + 4)
+
+  if (relief) {
+    if (!miniCache || miniCache.seed !== map.seed || fog.revealedCount - miniCache.revealed > 256) {
+      miniCache = { canvas: buildMini(map, fog, relief), revealed: fog.revealedCount, seed: map.seed }
+    }
+    ctx.drawImage(miniCache.canvas, px, py)
+  }
+
   ctx.strokeStyle = 'rgba(244,196,48,0.5)'
   ctx.lineWidth = 1
   ctx.strokeRect(px - 2.5, py - 2.5, size + 5, size + 5)
-  const step = 2
-  for (let y = 0; y < map.height; y += step) {
-    for (let x = 0; x < map.width; x += step) {
-      if (!isSeen(fog, x, y)) continue
-      const t = map.tiles[y * map.width + x]
-      ctx.fillStyle = t === 0 ? '#1b4a8a' : '#3f6b34'
-      ctx.fillRect(px + x * scale, py + y * scale, step * scale + 0.5, step * scale + 0.5)
-    }
-  }
+
   // charted villages: gold squares for Cities of Gold, brown for the rest
   for (const v of villages) {
     if (!isSeen(fog, v.x, v.y)) continue
@@ -235,7 +401,7 @@ export function renderMinimap(
   for (const sh of ships) ctx.fillRect(px + sh.x * scale - 1, py + sh.y * scale - 1, 3, 3)
   ctx.fillStyle = '#e8d8a0'
   for (const o of outposts) ctx.fillRect(px + o.x * scale - 1, py + o.y * scale - 1, 3, 3)
-  // the slice of the world currently on screen
+
   if (cam) {
     const vwTiles = rc.viewW / (TILE_PX * rc.zoom)
     const vhTiles = rc.viewH / (TILE_PX * rc.zoom)
@@ -248,4 +414,9 @@ export function renderMinimap(
       vhTiles * scale,
     )
   }
+}
+
+/** Drop the cached chart when a new world is generated. */
+export function invalidateMinimap(): void {
+  miniCache = null
 }
