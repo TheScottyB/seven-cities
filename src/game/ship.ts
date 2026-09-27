@@ -1,7 +1,8 @@
 import type { GameMap } from '../world/mapgen'
 import { TILE, isWalkable } from '../world/tiles'
 import { nearestOceanRing, MOORING_RADIUS } from '../world/villages'
-import { Facing, updateMover, type PartialMover } from './explorer'
+import { updateMover, type PartialMover } from './explorer'
+import { Facing } from './gait'
 
 /**
  * The sprite fields are OPTIONAL on a ship. Saves persist bare {x, y} and the

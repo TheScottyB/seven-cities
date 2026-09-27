@@ -7,8 +7,6 @@ coast and interior, find native villages and gather gold while your food, crew a
 run down. Find all seven fabled Cities of Gold before the expedition collapses, and sail
 home to Spain between voyages to bank your gold and rise at court.
 
-<!-- Screenshot: added once a hosted build exists; the repo commits no image files. -->
-
 ## Play
 
 ```bash

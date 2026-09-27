@@ -1,5 +1,5 @@
 import { makeScene, tickScene, isBlockedAt } from '../src/game/walkin'
-import { Facing } from '../src/game/explorer'
+import { Facing } from '../src/game/gait'
 import { effectiveTemperament, moodOf } from '../src/game/encounter'
 import type { Village } from '../src/world/villages'
 

@@ -32,7 +32,8 @@ import { placeVillages, nearestUnvisitedGolden, CITIES_OF_GOLD, type Village } f
 import { nearestLandDist } from './world/coast'
 import { makeFog, reveal } from './world/fog'
 import { makeState, tick, score, scoreParts, GameStatus, LOW_FOOD } from './game/state'
-import { makeExplorer, moveExplorer, Facing } from './game/explorer'
+import { makeExplorer, moveExplorer } from './game/explorer'
+import { Facing } from './game/gait'
 import { findMoorings, moveShip, type Ship } from './game/ship'
 import {
   foundOutpost,
@@ -142,6 +143,10 @@ window.addEventListener('resize', resize)
 /** UI layers draw in CSS px; the transform maps them onto the device-px backing store. */
 const uiTransform = () => ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
+const reduceMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null
+/** Seconds for the panels' decorative motion; held at 0 under the OS reduced-motion setting. */
+const uiClock = () => (reduceMotion?.matches ? 0 : performance.now() / 1000)
+
 interface World {
   seedStr: string
   map: ReturnType<typeof generateMap>
@@ -155,7 +160,7 @@ interface World {
   outposts: Outpost[]
   weather: Weather
   cam: Camera
-  /** renderer precomputation; non-enumerable so World serializes as before */
+  /** renderer precomputation; non-enumerable so World serializes as game state only */
   readonly art: WorldArt
 }
 
@@ -194,6 +199,16 @@ let promoted = false
 let resumable = false
 /** The outfit screen warns that setting sail overwrites the single save slot. */
 let outfitReplacesSave = false
+/** What Enter on the title reset; Esc from the outfit screen puts it back. */
+let titleReturn: {
+  resumable: boolean
+  career: Career
+  nextVoyage: boolean
+  justBanked: number
+  promoted: boolean
+  saveOwner: boolean
+  ownerWarned: boolean
+} | null = null
 /** Title-screen storage reads, cached until the next storage write or screen change. */
 let titleInfo: { hasSave: boolean; chronicle: ChronicleEntry[] } | null = null
 /** False once another tab has written the save; this tab then stops saving. */
@@ -243,12 +258,14 @@ function storeMuted(m: boolean) {
 let muted = loadMuted()
 player.setMuted(muted)
 
-/** Every key or click offers the browser audio; the first success is remembered. */
-function onGesture() {
+/**
+ * Every key or click offers the browser audio; the first success is remembered.
+ * A synthetic event cannot start audio, so it is never the press that gets swallowed.
+ */
+function onGesture(e: Event) {
   gestured = true
-  askPersist()
   if (crashed) return // the card keeps audio silent
-  if (player.unlock() && !audioPrimed) {
+  if (player.unlock() && !audioPrimed && e.isTrusted) {
     audioPrimed = true
     swallowStart = true
   }
@@ -274,23 +291,14 @@ function saveIfPlaying() {
   if (screen === 'playing' || screen === 'walkin') saveGame()
 }
 
-let persistAsked = false
-/** Ask once, on the first gesture, that the browser not evict our saves. */
-function askPersist() {
-  if (persistAsked) return
-  persistAsked = true
-  try {
-    navigator.storage?.persist?.().catch(() => {})
-  } catch {
-    /* unsupported: saves still work, just evictable */
-  }
-}
 // registered after Input's own listener, so the key is already queued when a pause drops it
 window.addEventListener('keydown', (e) => {
   touchOnly = false
-  onGesture()
-  if (crashed) {
+  onGesture(e)
+  // a driving bot's keys go to Input; step() still runs update() after a crash
+  if (crashed && !driven) {
     // update() no longer runs; the recovery card's two keys are read here
+    if (e.ctrlKey || e.metaKey || e.altKey) return
     if (e.key === 'Escape') location.reload()
     else if (e.key?.toLowerCase() === 'x') {
       clearSave()
@@ -328,7 +336,7 @@ function canvasPoint(e: MouseEvent): { x: number; y: number } {
   return { x: e.clientX - r.left, y: e.clientY - r.top }
 }
 canvas.addEventListener('click', (e) => {
-  onGesture()
+  onGesture(e)
   if (crashed) return
   if (paused) {
     unpause()
@@ -413,11 +421,12 @@ function newWorld(seedStr: string): World {
     outposts: [], weather: makeWeather(seed, map),
     cam: { x: explorer.x, y: explorer.y },
   }
-  // non-enumerable: __dbg.world() and any serializer see the same payload as before
+  // non-enumerable: __dbg.world() and any serializer see only game state
   return Object.defineProperty(w, 'art', { value: buildWorldArt(map), enumerable: false }) as World
 }
 
 function embark() {
+  titleReturn = null
   world = newWorld(world.seedStr)
   claimSave(true) // a fresh expedition takes the slot even if another tab wrote meanwhile
   applyOutfit()
@@ -458,6 +467,7 @@ function resetSession() {
   justBanked = 0
   promoted = false
   resumable = false
+  titleReturn = null
 }
 
 // --- save / load ---------------------------------------------------------
@@ -529,6 +539,18 @@ function loadSave(): SaveData | null {
     return null
   }
 }
+
+/** A stored save loadSave() rejects: damaged, or written in another format. */
+function unreadableSave(): boolean {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY)
+    return !!raw && deserializeSave(raw) === null
+  } catch {
+    return false
+  }
+}
+// reported on the title; the next expedition's save replaces it
+if (unreadableSave()) flash = { text: 'Your saved expedition could not be read.', t: 3.5 }
 
 function loadChronicle(): ChronicleEntry[] {
   try {
@@ -664,7 +686,8 @@ function update(dt: number) {
   const click = clicks.shift() ?? null
   const firstUnlock = swallowStart
   swallowStart = false
-  if (input.pressed('m')) {
+  // the press that struck up the title theme does nothing else, M included
+  if (input.pressed('m') && !(firstUnlock && screen === 'start')) {
     muted = player.toggleMute()
     storeMuted(muted)
     flash = { text: muted ? 'Sound muted (M to unmute)' : 'Sound on', t: 1.5 }
@@ -699,11 +722,13 @@ function update(dt: number) {
     // while a touch-only device is gated, taps on the (unregistered) start lines are ignored
     const startNew = input.pressed('enter') || (!touchOnly && click === 'start-new')
     const startContinue = !startNew && (input.pressed('c') || (!touchOnly && click === 'start-continue'))
-    if ((startNew || startContinue) && firstUnlock) {
+    if (firstUnlock) {
       // this press struck up the title theme; stay so it is heard, the next press proceeds
     } else if (startNew) {
       outfitReplacesSave = titleInfo?.hasSave ?? loadSave() !== null
+      const back = { resumable, career, nextVoyage, justBanked, promoted, saveOwner, ownerWarned }
       resetSession()
+      titleReturn = back
       claimSave(false)
       outfit = defaultOutfit()
       outfitRow = 0
@@ -742,7 +767,16 @@ function update(dt: number) {
     if (input.pressed('enter') || (!touchOnly && click === 'outfit-go')) {
       if (nextVoyage) embarkVoyage()
       else embark()
-    } else if (input.pressed('esc') && !nextVoyage) screen = 'start'
+    } else if (input.pressed('esc') && !nextVoyage) {
+      if (titleReturn) {
+        // a storage event since Enter still stands
+        const back = titleReturn
+        ;({ resumable, career, nextVoyage, justBanked, promoted, ownerWarned } = back)
+        saveOwner = saveOwner && back.saveOwner
+        titleReturn = null
+      }
+      screen = 'start'
+    }
     input.endFrame()
     pumpAudio()
     return
@@ -816,8 +850,15 @@ function update(dt: number) {
     if (foodBefore >= LOW_FOOD && state.food < LOW_FOOD) {
       flash = { text: 'Provisions low — find a fort, trade, or sail WEST to Spain!', t: 3.5 }
     }
+    // an expedition that ended this tick takes no further action
+    if (state.status !== GameStatus.Playing) {
+      clearSave()
+      recordExpedition()
+      resumable = false
+      screen = 'over'
+    }
 
-    if (!world.sailing && input.pressed('f')) {
+    if (screen === 'playing' && !world.sailing && input.pressed('f')) {
       // raise a mission fort here
       const tx = Math.floor(explorer.x)
       const ty = Math.floor(explorer.y)
@@ -831,7 +872,7 @@ function update(dt: number) {
       } else flash = { text: 'Too close to another outpost.', t: 2 }
     }
 
-    const target = input.pressed('action') ? currentTarget() : null
+    const target = screen === 'playing' && input.pressed('action') ? currentTarget() : null
     if (target) {
       switch (target.kind) {
         case 'spain': {
@@ -907,13 +948,6 @@ function update(dt: number) {
       if (autosaveIn <= 0) {
         autosaveIn = AUTOSAVE_EVERY
         saveGame()
-      }
-
-      if (state.status !== GameStatus.Playing) {
-        clearSave()
-        recordExpedition()
-        resumable = false
-        screen = 'over'
       }
     }
   }
@@ -994,7 +1028,7 @@ function render(alpha = 1) {
     return
   }
   if (screen === 'spain') {
-    drawSpainScreen(ctx, cssW, cssH, career, world.state, justBanked, promoted, performance.now() / 1000)
+    drawSpainScreen(ctx, cssW, cssH, career, world.state, justBanked, promoted, uiClock())
     if (flash.t > 0) drawResult(ctx, cssW, flash.text, 28)
     return
   }
@@ -1012,7 +1046,7 @@ function render(alpha = 1) {
           ? 'The people watch you with open curiosity.'
           : 'The people keep their distance, wary of the stranger.'
     }
-    drawWalkin(ctx, cssW, cssH, walkin, tileset, note, spriteBank, performance.now() / 1000)
+    drawWalkin(ctx, cssW, cssH, walkin, tileset, note, spriteBank, uiClock())
     if (flash.t > 0) drawResult(ctx, cssW, flash.text, 12)
     return
   }
@@ -1104,7 +1138,7 @@ function render(alpha = 1) {
   // the banner yields while a decision panel is up — no overlapping chrome
   if (flash.t > 0 && screen === 'playing' && !encounter) drawResult(ctx, cssW, flash.text, hudH + 10)
   if (encounter)
-    drawEncounter(ctx, cssW, cssH, encounter, world.state.goods, world.state.fear, performance.now() / 1000)
+    drawEncounter(ctx, cssW, cssH, encounter, world.state.goods, world.state.fear, uiClock())
 
   if (screen === 'over') {
     const won = world.state.status === GameStatus.Won
@@ -1120,7 +1154,7 @@ function render(alpha = 1) {
         day: world.state.day,
         parts: scoreParts(world.state, world.fog.revealedCount),
       },
-      performance.now() / 1000,
+      uiClock(),
     )
     if (flash.t > 0) drawResult(ctx, cssW, flash.text, 28)
   }
@@ -1167,6 +1201,7 @@ if (import.meta.env.DEV) {
   /** A bot is driving: clear every lifecycle gate so no key it sends is eaten. */
   const standAside = () => {
     driven = true
+    input.keepOnBlur = true
     paused = false
     audioPrimed = true
     gestured = true
@@ -1212,7 +1247,7 @@ if (import.meta.env.DEV) {
       }
       return { rms, e660: goertzel(660), e880: goertzel(880), e120: goertzel(120), e3000: goertzel(3000) }
     },
-    audioScene: () => ({ // soundscape inputs, derived controls and texture firing counts
+    audioScene: () => ({ // soundscape inputs, derived controls and texture firing counts; hostility counts moodOf-hostile villages
       input: sceneInput(),
       controls: sceneControls(sceneInput()),
       stats: player.getTextureStats(),

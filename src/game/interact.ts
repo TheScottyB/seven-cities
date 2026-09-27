@@ -21,7 +21,7 @@ export type InteractionTarget =
   | { kind: 'outpost'; outpost: Outpost }
   | { kind: 'ship'; index: number }
 
-// Ties go to the later entry (<=), matching the original lookups.
+// Ties go to the later entry (<=).
 
 /** Index of the nearest ship within BOARD_DIST, or -1. */
 export function nearestShipIndex(ships: readonly Ship[], x: number, y: number): number {

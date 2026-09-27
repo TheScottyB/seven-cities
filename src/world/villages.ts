@@ -53,7 +53,7 @@ export function nearestOceanRing(
 }
 
 /** Index of the ocean tile nearest (x, y) within maxR rings, or -1 if none. */
-export function nearestOceanIndex(map: GameMap, x: number, y: number, maxR: number): number {
+function nearestOceanIndex(map: GameMap, x: number, y: number, maxR: number): number {
   let found = -1
   nearestOceanRing(map, x, y, maxR, (i) => {
     found = i

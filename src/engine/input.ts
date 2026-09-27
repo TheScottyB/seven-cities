@@ -2,6 +2,8 @@ export class Input {
   private held = new Set<string>()
   private edge = new Set<string>()
   private repeat = new Set<string>()
+  /** A driver that sends its own keydown/keyup pairs keeps them across blur and hide. */
+  keepOnBlur = false
 
   constructor(target: EventTarget = window) {
     target.addEventListener('keydown', (e) => {
@@ -21,10 +23,12 @@ export class Input {
       if (ke.key === 'Meta') this.reset()
     })
     // Keyups that land in another window never arrive; drop everything held.
-    target.addEventListener('blur', () => this.reset())
+    target.addEventListener('blur', () => {
+      if (!this.keepOnBlur) this.reset()
+    })
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', () => {
-        if (document.hidden) this.reset()
+        if (document.hidden && !this.keepOnBlur) this.reset()
       })
     }
   }
@@ -90,7 +94,8 @@ function key(e: KeyboardEvent): string {
   const raw = e.key ?? ''
   const k = raw.length === 1 ? raw.toLowerCase() : raw
   const move = e.code ? PHYSICAL_MOVE[e.code] : undefined
-  if (move && !MNEMONIC.has(k)) return move
+  // a label that is itself a movement letter wins (Colemak S sits on KeyD)
+  if (move && !MNEMONIC.has(k) && !/^[wasd]$/.test(k)) return move
   const foreign = k === 'Process' || k === 'Unidentified' || (k.length === 1 && !/[a-z0-9 ]/.test(k))
   return logical((foreign && e.code && fromCode(e.code)) || k)
 }

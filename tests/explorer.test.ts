@@ -1,5 +1,6 @@
 import { generateMap, type GameMap } from '../src/world/mapgen'
-import { makeExplorer, moveExplorer, Facing, GAIT_CYCLE, GAIT_RATE } from '../src/game/explorer'
+import { makeExplorer, moveExplorer } from '../src/game/explorer'
+import { Facing, GAIT_CYCLE, GAIT_RATE } from '../src/game/gait'
 import { isWalkable, TILE } from '../src/world/tiles'
 
 test('starts at landing point', () => {

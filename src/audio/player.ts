@@ -238,7 +238,7 @@ export class AudioPlayer {
 
   /**
    * Start, switch, or stop the score. Idempotent per theme; crossfades on
-   * change. Called every frame with musicFor(snapshot).
+   * change. Called every frame with musicFor(screen).
    */
   setTheme(id: ThemeId | null): void {
     if (id === this.themeId) return
@@ -319,8 +319,11 @@ export class AudioPlayer {
     const roll = (perMin: number) => perMin > 0 && Math.random() < (perMin * 0.25) / 60
     const t = this.ctx.currentTime + Math.random() * 0.2
     const vary = () => Math.random() * 2 - 1
+    // a stopped clock would stack every texture at one instant for the resume;
+    // the dice and counts still run so the stats stay readable
+    const running = this.ctx.state === 'running'
     const fire = (kind: TextureKind, opts: Parameters<typeof synthTexture>[4]) => {
-      synthTexture(this.ctx!, this.master!, kind, t, opts)
+      if (running) synthTexture(this.ctx!, this.master!, kind, t, opts)
       this.texStats[kind]++
     }
     if (roll(c.creaksPerMin)) fire('creak', { gain: 0.7 + Math.random() * 0.6, vary: vary() })
@@ -360,7 +363,8 @@ export class AudioPlayer {
 
   /** A short bright bird call — two quick descending pips over the land bed. */
   private chirp(): void {
-    if (!this.ctx || !this.master || this.muted) return
+    // a stopped clock would pile the calls up for the resume
+    if (!this.ctx || !this.master || this.muted || this.ctx.state !== 'running') return
     const t = this.ctx.currentTime
     const base = 2600 + Math.random() * 1200
     const g = this.ctx.createGain()

@@ -6,7 +6,7 @@
  */
 import type { Screen } from '../game/screen'
 
-export type ThemeId ='title' | 'spain' | 'victory' | 'lament'
+export type ThemeId = 'title' | 'spain' | 'victory' | 'lament'
 export type Voice = 'pluck' | 'bass' | 'flute' | 'bell'
 
 export interface ScoreNote {

@@ -7,8 +7,9 @@
  * the exact vocabulary 8-bit artists used to blend two colours out of a fixed
  * palette, so it belongs here in a way a soft alpha gradient never would.
  *
- * At most 90 overlays (6 terrains x 15 masks) are baked once at boot; the draw loop does at most one
- * extra drawImage on the ~30% of tiles that sit on a border.
+ * At most 90 overlays (6 terrains x 15 masks) are baked once at boot; the
+ * draw loop does at most one extra drawImage on the ~30% of tiles that sit
+ * on a border.
  */
 import { TILE, tileInfo } from '../world/tiles'
 import { TILE_PX } from './tileset'

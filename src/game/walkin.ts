@@ -1,7 +1,8 @@
 import type { Village } from '../world/villages'
 import { makeRng, type Rng } from '../world/rng'
 import { effectiveTemperament, moodOf } from './encounter'
-import { Facing, GAIT_CYCLE, facingFrom } from './explorer'
+import { facingFrom } from './explorer'
+import { Facing, GAIT_CYCLE } from './gait'
 
 /**
  * The walk-in scene: entering a village puts you on foot among its people.

@@ -1,4 +1,5 @@
 import { LOW_FOOD, type GameState } from '../game/state'
+import { TRADE_GOODS } from '../game/encounter'
 import { CITIES_OF_GOLD } from '../world/villages'
 import { font } from './font'
 
@@ -60,13 +61,13 @@ export function drawHud(ctx: CanvasRenderingContext2D, viewW: number, s: GameSta
   ctx.textBaseline = 'middle'
 
   const foodColor = s.food < LOW_FOOD ? '#c0504d' : s.food < 150 ? '#e0b34f' : '#7fd17f'
-  const goodsColor = s.goods < 25 ? '#c0504d' : '#d8925c'
+  const goodsColor = s.goods < TRADE_GOODS ? '#c0504d' : '#d8925c'
   // warning tiers carry a mark as well as a colour, so they read without it
   const warn = (v: number, low: boolean) => Math.floor(v).toString() + (low ? '!' : '')
   // crew and morale round up: the expedition is alive until they reach zero
   const items: [string, string, string][] = [
     ['Food', warn(s.food, s.food < 150), foodColor],
-    ['Goods', warn(s.goods, s.goods < 25), goodsColor],
+    ['Goods', warn(s.goods, s.goods < TRADE_GOODS), goodsColor],
     ['Crew', Math.ceil(s.crew).toString(), '#e0d18a'],
     ['Gold', Math.floor(s.gold).toString(), '#f4c430'],
   ]

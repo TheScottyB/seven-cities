@@ -445,6 +445,8 @@ export function drawSpainScreen(
 const MOOD_COLOR: Record<Mood, string> = { friendly: '#7fd17f', wary: '#e0b34f', hostile: '#c0504d' }
 /** what the mood means for the deal on the table */
 const MOOD_TERMS: Record<Mood, string> = { friendly: 'generous terms', wary: 'they bargain hard', hostile: 'they want you gone' }
+/** the ground the delegation stands on */
+const MOOD_GROUND: Record<Mood, string> = { hostile: '#43302a', wary: '#44523a', friendly: '#3d5f32' }
 
 export function drawEncounter(
   ctx: CanvasRenderingContext2D,
@@ -472,7 +474,7 @@ export function drawEncounter(
   ctx.beginPath()
   ctx.rect(x + 14, gy, w - 28, gh)
   ctx.clip()
-  ctx.fillStyle = { hostile: '#43302a', wary: '#44523a', friendly: '#3d5f32' }[mood]
+  ctx.fillStyle = MOOD_GROUND[mood]
   ctx.fillRect(x + 14, gy, w - 28, gh)
   const rng0 = ((v.x * 73856093) ^ (v.y * 19349663)) >>> 0
   ctx.fillStyle = 'rgba(20,28,16,0.5)'

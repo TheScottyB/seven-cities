@@ -2,8 +2,6 @@ import type { GameMap } from '../world/mapgen'
 import { tileInfo, isWalkable } from '../world/tiles'
 import { Facing, GAIT_CYCLE } from './gait'
 
-export { Facing, GAIT_CYCLE, GAIT_RATE } from './gait'
-
 /** Anything that moves across the map and wants a facing-aware sprite. */
 export interface Mover {
   x: number

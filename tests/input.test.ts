@@ -47,6 +47,29 @@ test('movement follows physical position (AZERTY Z on KeyW is up)', () => {
   expect(input.axis()).toEqual({ dx: 0, dy: -1 })
 })
 
+test('Colemak keeps S down and D right by label', () => {
+  const { input, down, up } = setup()
+  down({ key: 'r', code: 'KeyS' })
+  expect(input.axis()).toEqual({ dx: 0, dy: 0 })
+  expect(input.pressed('r')).toBe(true)
+  up({ key: 'r', code: 'KeyS' })
+  down({ key: 's', code: 'KeyD' })
+  expect(input.axis()).toEqual({ dx: 0, dy: 1 })
+  up({ key: 's', code: 'KeyD' })
+  down({ key: 'd', code: 'KeyG' })
+  expect(input.axis()).toEqual({ dx: 1, dy: 0 })
+})
+
+test('keepOnBlur holds keys and pending presses across blur', () => {
+  const { target, input, down } = setup()
+  input.keepOnBlur = true
+  down({ key: 'ArrowRight' })
+  down({ key: 'Enter' })
+  target.dispatchEvent(new Event('blur'))
+  expect(input.axis()).toEqual({ dx: 1, dy: 0 })
+  expect(input.pressed('enter')).toBe(true)
+})
+
 test('mnemonic letters keep their label even on a movement position', () => {
   const { input, down } = setup()
   // Dvorak puts E where QWERTY has D.

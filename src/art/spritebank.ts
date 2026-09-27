@@ -261,7 +261,7 @@ function clampShipFacing(facing: number | undefined): number {
 }
 
 /** Draw offset for the mirrored (west) explorer cell: shifts it back one pixel. */
-export function figMirrorDx(facing: number): number {
+function figMirrorDx(facing: number): number {
   return facing === Facing.W ? -MIRROR_DX : 0
 }
 

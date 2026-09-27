@@ -21,7 +21,7 @@ export interface GameState {
 
 export const SECONDS_PER_DAY = 20
 
-/** provisions at or below this read as running low */
+/** provisions below this read as running low */
 export const LOW_FOOD = 80
 
 /** provisions a crew of this size eats per game day — the outfitter's arithmetic */
