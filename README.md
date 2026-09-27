@@ -1,6 +1,6 @@
-# Seven Cities of Gold
+# Six Seven Cities of Gold Tone Metal
 
-An unofficial browser remake of *The Seven Cities of Gold* (1984).
+An unofficial fan tribute to *The Seven Cities of Gold* (1984), playable in the browser.
 
 You are a conquistador making landfall in a procedurally generated New World. Chart the
 coast and interior, find native villages and gather gold while your food, crew and morale
@@ -177,5 +177,9 @@ Settled rules:
 Based on *The Seven Cities of Gold* (1984), designed by Danielle Bunten Berry at Ozark
 Softscape and published by Electronic Arts.
 
-This is an unofficial fan remake. It is not affiliated with or endorsed by Electronic Arts.
-All trademarks belong to their respective owners.
+*Six Seven Cities of Gold Tone Metal* is an unofficial fan tribute. It is not affiliated
+with or endorsed by Electronic Arts. All trademarks belong to their respective owners.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

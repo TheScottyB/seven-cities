@@ -5,7 +5,8 @@ import { bestScore, type ChronicleEntry } from '../game/chronicle'
 import { rankTitle, rankIndex, budgetFor, RANKS, type Career } from '../game/career'
 import { dailyAppetite, type GameState, type ScoreParts } from '../game/state'
 import { addHit, hovered } from './hit'
-import { font } from './font'
+import { font, fitFont } from './font'
+import { GAME_TITLE } from './title'
 import { drawChief, drawIdol, drawShip, drawVillager, drawShadow, drawVillage } from '../art/sprites'
 
 function panel(ctx: CanvasRenderingContext2D, viewW: number, viewH: number, w: number, h: number, border = '#f4c430') {
@@ -289,11 +290,27 @@ export function drawStartScreen(
   const total = HEAD + lines.length * LINE + (wantRows ? CHRON_HEAD + wantRows * ROW : 0)
   const top = Math.max(28, Math.round((viewH - total) / 2))
 
-  drawCompassRose(ctx, cx, top + 34, 34)
-  center(ctx, 'THE SEVEN CITIES OF GOLD', cx, top + 110, font(40, true), '#f4c430')
-  center(ctx, 'A modern expedition into the New World', cx, top + 148, font(18), '#c9c9d2')
+  // narrow windows (a phone showing the keyboard notice) shrink the text, not the layout
+  const subtitle = 'A modern expedition into the New World'
+  const chronRows = chronicle.slice(0, wantRows).map(chronicleLine)
+  const avail = viewW - 40
+  let k = 1
+  const fit = (text: string, f: string) => {
+    ctx.font = f
+    const w = ctx.measureText(text).width
+    if (w > avail) k = Math.min(k, avail / w)
+  }
+  fit(subtitle, font(18))
+  for (const l of lines) fit(l.text, font(16))
+  fit(chronicleHeading(chronicle), font(15, true))
+  for (const r of chronRows) fit(r, font(14))
+  const sz = (px: number) => Math.max(8, Math.floor(px * k))
 
-  const lineFont = font(16)
+  drawCompassRose(ctx, cx, top + 34, 34)
+  center(ctx, GAME_TITLE.toUpperCase(), cx, top + 110, fitFont(ctx, GAME_TITLE.toUpperCase(), 40, viewW - 64), '#f4c430')
+  center(ctx, subtitle, cx, top + 148, font(sz(18)), '#c9c9d2')
+
+  const lineFont = font(sz(16))
   let y = top + HEAD
   for (const l of lines) {
     center(ctx, l.text, cx, y, lineFont, l.color)
@@ -306,16 +323,21 @@ export function drawStartScreen(
   const rows = Math.max(0, Math.min(wantRows, Math.floor((viewH - 28 - firstRow + ROW) / ROW)))
   if (rows) {
     y += 18
-    const best = bestScore(chronicle)
-    center(ctx, `— CHRONICLE OF EXPEDITIONS · best score ${best} —`, cx, y, font(15, true), '#f4c430')
+    center(ctx, chronicleHeading(chronicle), cx, y, font(sz(15), true), '#f4c430')
     y += 24
-    for (const e of chronicle.slice(0, rows)) {
-      const verdict = e.won ? ' WON' : 'LOST'
-      const line = `${verdict}   score ${String(e.score).padStart(5)}   ${String(e.gold).padStart(4)} gold   ${e.cities}/${CITIES_OF_GOLD} cities   day ${e.day}`
-      center(ctx, line, cx, y, font(14), e.won ? '#e0d18a' : '#8a8a94')
+    chronicle.slice(0, rows).forEach((e, i) => {
+      center(ctx, chronRows[i], cx, y, font(sz(14)), e.won ? '#e0d18a' : '#8a8a94')
       y += 21
-    }
+    })
   }
+}
+
+const chronicleHeading = (chronicle: ChronicleEntry[]) =>
+  `— CHRONICLE OF EXPEDITIONS · best score ${bestScore(chronicle)} —`
+
+function chronicleLine(e: ChronicleEntry): string {
+  const verdict = e.won ? ' WON' : 'LOST'
+  return `${verdict}   score ${String(e.score).padStart(5)}   ${String(e.gold).padStart(4)} gold   ${e.cities}/${CITIES_OF_GOLD} cities   day ${e.day}`
 }
 
 export function drawSpainScreen(
@@ -332,7 +354,7 @@ export function drawSpainScreen(
   ctx.fillRect(0, 0, viewW, viewH)
   drawFrame(ctx, viewW, viewH)
   const cx = viewW / 2
-  drawCrest(ctx, cx, viewH / 2 - 208, 42)
+  drawCrest(ctx, cx, viewH / 2 - 216, 42) // shield tip clears the title's cap height
   const title = rankTitle(career.banked)
   center(ctx, 'SPAIN — THE COURT OF THE CROWN', cx, viewH / 2 - 170, font(32, true), '#f4c430')
   center(

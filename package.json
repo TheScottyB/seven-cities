@@ -1,7 +1,7 @@
 {
   "name": "seven-cities",
   "version": "1.0.0",
-  "description": "An unofficial browser remake of The Seven Cities of Gold (1984)",
+  "description": "An unofficial fan tribute to The Seven Cities of Gold (1984)",
   "type": "module",
   "private": true,
   "scripts": {
@@ -12,9 +12,13 @@
     "typecheck": "tsc",
     "check": "npm run typecheck && vitest run && vite build && node scripts/check-dist.mjs"
   },
-  "keywords": ["game", "canvas", "typescript"],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "game",
+    "canvas",
+    "typescript"
+  ],
+  "author": "thescottybe",
+  "license": "MIT",
   "repository": "github:TheScottyB/seven-cities",
   "bugs": "https://github.com/TheScottyB/seven-cities/issues",
   "engines": {

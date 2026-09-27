@@ -1047,7 +1047,7 @@ function render(alpha = 1) {
           : 'The people keep their distance, wary of the stranger.'
     }
     drawWalkin(ctx, cssW, cssH, walkin, tileset, note, spriteBank, uiClock())
-    if (flash.t > 0) drawResult(ctx, cssW, flash.text, 12)
+    if (flash.t > 0) drawResult(ctx, cssW, flash.text, 8)
     return
   }
 

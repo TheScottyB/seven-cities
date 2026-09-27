@@ -1,7 +1,7 @@
 import type { WalkinScene } from '../game/walkin'
 import { moodOf } from '../game/encounter'
 import type { Tileset } from '../art/tileset'
-import { DECORS, tileIndex } from '../art/relief'
+import { tileIndex } from '../art/relief'
 import { TILE } from '../world/tiles'
 import { drawExplorerSprite, type SpriteBank } from '../art/spritebank'
 import { font } from './font'
@@ -37,14 +37,18 @@ export function drawWalkin(
   // and a fractional factor is exactly what softens them. The view is in CSS
   // px under the caller's device-pixel-ratio transform, so the scale and the
   // origin are chosen in DEVICE px and converted back.
+  // Vertical budget: a top band for the toast (y 8-42) and the mood banner
+  // above the scene, and room for the help line below it.
+  const TOP = 92
+  const BOTTOM = 44
   const dpr = ctx.getTransform().a || 1
-  const fit = Math.min(Math.floor(((viewW - 24) * dpr) / scene.w), Math.floor(((viewH - 90) * dpr) / scene.h))
+  const fit = Math.min(Math.floor(((viewW - 24) * dpr) / scene.w), Math.floor(((viewH - TOP - BOTTOM) * dpr) / scene.h))
   const SCENE_PX = (16 * Math.max(1, Math.floor(fit / 16))) / dpr
   const sw = scene.w * SCENE_PX
   const sh = scene.h * SCENE_PX
   // integer origin + nearest-neighbour scaling: no seams between ground tiles
   const ox = Math.round(((viewW - sw) / 2) * dpr) / dpr
-  const oy = Math.round(((viewH - sh) / 2) * dpr) / dpr
+  const oy = Math.round((TOP + (viewH - TOP - BOTTOM - sh) / 2) * dpr) / dpr
   const sx = (x: number) => ox + x * SCENE_PX
   const sy = (y: number) => oy + y * SCENE_PX
 
@@ -55,9 +59,9 @@ export function drawWalkin(
   for (let ty = 0; ty < scene.h; ty++) {
     for (let tx = 0; tx < scene.w; tx++) {
       const v = ((tx * 73856093) ^ (ty * 19349663)) >>> 0
-      // pick along the decor axis only — sampling the raw array would stride
-      // across phase/shade levels and blotch the ground
-      const frame = tileIndex(TILE.GRASS, v % DECORS[TILE.GRASS], 0, 0)
+      // a kept plaza: bare turf with the odd wildflower, not the wild country's
+      // rocks. tileIndex keeps the pick on the decor axis of the atlas.
+      const frame = tileIndex(TILE.GRASS, v % 9 === 0 ? 1 : 0, 0, 0)
       ctx.drawImage(grass[frame], ox + tx * SCENE_PX, oy + ty * SCENE_PX, SCENE_PX, SCENE_PX)
     }
   }
