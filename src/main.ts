@@ -21,14 +21,35 @@
  * The window.__dbg hook at the bottom exists in DEV builds only.
  */
 import { generateMap } from './world/mapgen'
-import { placeVillages, nearestUnvisitedGolden, type Village } from './world/villages'
+import { placeVillages, nearestUnvisitedGolden, CITIES_OF_GOLD, type Village } from './world/villages'
+import { nearestLandDist } from './world/coast'
 import { makeFog, reveal } from './world/fog'
-import { makeState, tick, score, GameStatus } from './game/state'
-import { makeExplorer, moveExplorer } from './game/explorer'
-import { findMoorings, moveShip, landingSpots, type Ship } from './game/ship'
-import { foundOutpost, tickOutposts, resupply, canFound, OUTPOST_COST, OUTPOST_CREW, type Outpost } from './game/outposts'
+import { makeState, tick, score, scoreParts, GameStatus, LOW_FOOD } from './game/state'
+import { makeExplorer, moveExplorer, Facing } from './game/explorer'
+import { findMoorings, moveShip, type Ship } from './game/ship'
+import {
+  foundOutpost,
+  tickOutposts,
+  resupply,
+  canFound,
+  tooCloseToVillage,
+  OUTPOST_COST,
+  OUTPOST_CREW,
+  OUTPOST_MIN_CREW,
+  type Outpost,
+} from './game/outposts'
+import { interactionTarget, RUMOR_RADIUS, type InteractionTarget } from './game/interact'
 import { makeWeather, windAt, windFactor, stormAt, applyStorm, type Weather } from './game/weather'
-import { discoverVillage, resolveTrade, resolveGift, resolveAttack, effectiveTemperament } from './game/encounter'
+import {
+  discoverVillage,
+  resolveTrade,
+  resolveGift,
+  resolveAttack,
+  effectiveTemperament,
+  moodOf,
+  applyDrivenOff,
+  HOSTILE_BELOW,
+} from './game/encounter'
 import { makeScene, tickScene, type WalkinScene } from './game/walkin'
 import { makeCareer, bankGold, budgetFor, rankIndex, type Career } from './game/career'
 import { direct, ambienceFor, type AudioSnapshot, type GameEvent } from './audio/director'
@@ -63,10 +84,7 @@ import { TILE } from './world/tiles'
 import type { Screen } from './game/screen'
 
 const REVEAL_RADIUS = 7
-const BOARD_DIST = 2.0
 const VILLAGE_COUNT = 28
-const INTERACT_DIST = 1.4
-const RUMOR_RADIUS = 4
 const AUTOSAVE_EVERY = 5 // seconds
 const SAVE_KEY = 'seven-cities-save'
 const CHRONICLE_KEY = 'seven-cities-chronicle'
@@ -302,38 +320,23 @@ function snapshot(): AudioSnapshot {
     sailing: world.sailing,
     inStorm: world.sailing && stormHere(),
     onRiver: !world.sailing && underfoot === TILE.RIVER,
-    lowFood: world.state.food < 80 && world.state.status === GameStatus.Playing,
+    lowFood: world.state.food < LOW_FOOD && world.state.status === GameStatus.Playing,
     citiesFound: world.state.citiesFound,
     won: world.state.status === GameStatus.Won,
     lost: world.state.status === GameStatus.Lost,
   }
 }
 
-/** Tiles from the ship to the nearest land — how loud the coast's gulls are. */
-function nearestLandDist(maxR = 14): number {
-  const { map, explorer } = world
-  const ex = Math.floor(explorer.x)
-  const ey = Math.floor(explorer.y)
-  const land = (x: number, y: number) =>
-    x >= 0 && y >= 0 && x < map.width && y < map.height && map.tiles[y * map.width + x] !== TILE.OCEAN
-  if (land(ex, ey)) return 0
-  for (let r = 1; r <= maxR; r++) {
-    for (let dx = -r; dx <= r; dx++) if (land(ex + dx, ey - r) || land(ex + dx, ey + r)) return r
-    for (let dy = -r + 1; dy <= r - 1; dy++) if (land(ex - r, ey + dy) || land(ex + r, ey + dy)) return r
-  }
-  return Infinity
-}
-
 function sceneInput(): SceneInput {
   const s = world.state
-  const famine = s.food < 80 ? 1 - s.food / 80 : 0
+  const famine = s.food < LOW_FOOD ? 1 - s.food / LOW_FOOD : 0
   let hostility = 0
   if (screen === 'walkin' && walkin) {
     hostility = walkin.hostile ? 1 : 0
   } else if (!world.sailing) {
     for (const v of world.villages) {
       if (v.depleted) continue
-      if (effectiveTemperament(v.temperament, s.fear) >= 0.35) continue
+      if (moodOf(effectiveTemperament(v.temperament, s.fear)) !== 'hostile') continue
       const d = Math.hypot(v.x + 0.5 - world.explorer.x, v.y + 0.5 - world.explorer.y)
       hostility = Math.max(hostility, 1 - d / 12)
     }
@@ -344,7 +347,7 @@ function sceneInput(): SceneInput {
     sailing: world.sailing,
     inStorm: world.sailing && stormHere(),
     wind: wind.strength,
-    distToLand: world.sailing ? nearestLandDist() : 0,
+    distToLand: world.sailing ? nearestLandDist(world.map, world.explorer.x, world.explorer.y) : 0,
     hostility: Math.max(0, Math.min(1, hostility)),
     famine,
   }
@@ -496,12 +499,17 @@ function loadChronicle(): ChronicleEntry[] {
   }
 }
 
+/** The expedition's final tally: score() is the sum of scoreParts, plus the gold banked in Spain. */
+function finalScore(): number {
+  return score(world.state, world.fog.revealedCount) + career.banked
+}
+
 function recordExpedition() {
   const s = world.state
   const entry: ChronicleEntry = {
     seedStr: world.seedStr,
     won: s.status === GameStatus.Won,
-    score: score(s, world.fog.revealedCount) + career.banked,
+    score: finalScore(),
     gold: Math.floor(s.gold) + career.banked,
     day: s.day,
     cities: s.citiesFound,
@@ -600,44 +608,16 @@ function continueExpedition() {
 
 // --- update --------------------------------------------------------------
 
-function nearestShipIndex(): number {
-  let best = -1
-  let bestD = BOARD_DIST
-  world.ships.forEach((sh, i) => {
-    const d = Math.hypot(sh.x - world.explorer.x, sh.y - world.explorer.y)
-    if (d <= bestD) {
-      bestD = d
-      best = i
-    }
+/** What E would act on right now; the action and its prompt both read this. */
+function currentTarget(): InteractionTarget | null {
+  return interactionTarget({
+    map: world.map,
+    sailing: world.sailing,
+    explorer: world.explorer,
+    villages: world.villages,
+    outposts: world.outposts,
+    ships: world.ships,
   })
-  return best
-}
-
-function nearestOutpost(): Outpost | null {
-  let best: Outpost | null = null
-  let bestD = INTERACT_DIST
-  for (const o of world.outposts) {
-    const d = Math.hypot(o.x + 0.5 - world.explorer.x, o.y + 0.5 - world.explorer.y)
-    if (d <= bestD) {
-      bestD = d
-      best = o
-    }
-  }
-  return best
-}
-
-function nearestVillage(): Village | null {
-  let best: Village | null = null
-  let bestD = INTERACT_DIST
-  for (const v of world.villages) {
-    if (v.depleted) continue
-    const d = Math.hypot(v.x + 0.5 - world.explorer.x, v.y + 0.5 - world.explorer.y)
-    if (d <= bestD) {
-      bestD = d
-      best = v
-    }
-  }
-  return best
 }
 
 function update(dt: number) {
@@ -663,8 +643,7 @@ function update(dt: number) {
       screen = 'playing'
       walkin = null
     } else if (status === 'driven-off') {
-      world.state.crew = Math.max(0, world.state.crew - 2)
-      world.state.morale = Math.max(0, world.state.morale - 5)
+      applyDrivenOff(world.state)
       flash = { text: 'The villagers drive you out!', t: 2.5 }
       audioEvents.push('driven-off')
       screen = 'playing'
@@ -783,6 +762,7 @@ function update(dt: number) {
       moveShip(map, explorer, dx, dy, sdt, mul, drX, drY)
       world.ships[world.activeShip].x = explorer.x
       world.ships[world.activeShip].y = explorer.y
+      world.ships[world.activeShip].facing = explorer.facing
     } else {
       moveExplorer(map, explorer, dx, dy, sdt)
     }
@@ -790,68 +770,78 @@ function update(dt: number) {
     reveal(fog, Math.floor(explorer.x), Math.floor(explorer.y), REVEAL_RADIUS)
     tick(state, sdt)
     tickOutposts(world.outposts, sdt)
-    if (foodBefore >= 80 && state.food < 80) {
-      flash = { text: 'Provisions run low — find a fort, a trade, or sail for Spain!', t: 3.5 }
+    if (foodBefore >= LOW_FOOD && state.food < LOW_FOOD) {
+      flash = { text: 'Provisions low — find a fort, trade, or sail WEST to Spain!', t: 3.5 }
     }
 
     if (!world.sailing && input.pressed('f')) {
       // raise a mission fort here
       const tx = Math.floor(explorer.x)
       const ty = Math.floor(explorer.y)
-      const nearVillage = world.villages.some((v) => Math.hypot(v.x - tx, v.y - ty) < 4)
-      if (nearVillage) flash = { text: 'The people already dwell here.', t: 2 }
-      else if (!canFound(state)) flash = { text: `A fort needs ${OUTPOST_COST} gold and ${OUTPOST_CREW} men to garrison.`, t: 2.5 }
+      if (tooCloseToVillage(world.villages, tx, ty)) flash = { text: 'The people already dwell here.', t: 2 }
+      else if (!canFound(state)) {
+        flash = { text: `A fort needs ${OUTPOST_COST} gold and ${OUTPOST_MIN_CREW} men (${OUTPOST_CREW} stay as garrison).`, t: 2.5 }
+      }
       else if (foundOutpost(state, world.outposts, tx, ty)) {
         flash = { text: 'A mission fort rises. The garrison will gather provisions.', t: 3 }
         saveGame()
       } else flash = { text: 'Too close to another outpost.', t: 2 }
     }
 
-    if (input.pressed('action')) {
-      if (world.sailing && explorer.x < 4) {
-        // set course for Spain: bank the gold, count the voyage
-        const before = rankIndex(career.banked)
-        justBanked = Math.floor(state.gold)
-        career = bankGold(career, state.gold)
-        state.gold = 0
-        promoted = rankIndex(career.banked) > before
-        flash = { text: '', t: 0 } // the court screen shows toasts now; none from the voyage
-        screen = 'spain'
-        saveGame('refit')
-      } else if (world.sailing) {
-        const spots = landingSpots(map, explorer.x, explorer.y)
-        if (spots.length) {
+    const target = input.pressed('action') ? currentTarget() : null
+    if (target) {
+      switch (target.kind) {
+        case 'spain': {
+          // set course for Spain: bank the gold, count the voyage
+          const before = rankIndex(career.banked)
+          justBanked = Math.floor(state.gold)
+          career = bankGold(career, state.gold)
+          state.gold = 0
+          promoted = rankIndex(career.banked) > before
+          flash = { text: '', t: 0 } // the court screen shows toasts now; none from the voyage
+          screen = 'spain'
+          saveGame('refit')
+          break
+        }
+        case 'landfall':
           // step ashore; the ship stays moored where we left it
           world.sailing = false
-          explorer.x = spots[0][0] + 0.5
-          explorer.y = spots[0][1] + 0.5
+          explorer.x = target.spot[0] + 0.5
+          explorer.y = target.spot[1] + 0.5
           flash = { text: 'You make landfall.', t: 2 }
           saveGame()
-        }
-      } else {
-        const v = nearestVillage()
-        const outpost = nearestOutpost()
-        const shipIdx = nearestShipIndex()
-        if (v) {
+          break
+        case 'village': {
+          const v = target.village
           const firstGolden = v.golden && !v.visited
           discoverVillage(state, v)
           if (firstGolden) {
-            flash = { text: `A City of Gold — ${state.citiesFound} of 7 found!`, t: 3 }
+            flash = { text: `A City of Gold — ${state.citiesFound} of ${CITIES_OF_GOLD} found!`, t: 3 }
           }
           walkin = makeScene(v, state.fear)
           walkinVillage = v
           screen = 'walkin'
-        } else if (outpost && outpost.stock >= 1) {
-          const taken = resupply(state, outpost)
+          break
+        }
+        case 'outpost': {
+          const taken = resupply(state, target.outpost)
           flash = { text: `The garrison shares its stores: +${taken} provisions.`, t: 2.5 }
           saveGame()
-        } else if (shipIdx >= 0) {
-          world.activeShip = shipIdx
+          break
+        }
+        case 'ship': {
+          const ship = world.ships[target.index]
+          world.activeShip = target.index
           world.sailing = true
-          explorer.x = world.ships[shipIdx].x
-          explorer.y = world.ships[shipIdx].y
+          explorer.x = ship.x
+          explorer.y = ship.y
+          // the hull keeps the heading it was moored with
+          explorer.facing = ship.facing ?? Facing.E
+          explorer.gait = 0
+          explorer.moving = false
           flash = { text: 'You board your ship. The coast is yours to follow.', t: 2 }
           saveGame()
+          break
         }
       }
     }
@@ -905,6 +895,7 @@ function chooseEncounter(action: 'trade' | 'gift' | 'attack') {
       const target = nearestUnvisitedGolden(villages, v.x, v.y)
       if (target) {
         reveal(fog, target.x, target.y, RUMOR_RADIUS)
+        invalidateMinimap() // a few dozen tiles would not trip the chart's own refresh
         flash = { text: 'The elders speak of a golden city... (see your map)', t: 3.5 }
       } else {
         flash = { text: 'You offer gifts. Goodwill rises.', t: 2.5 }
@@ -954,12 +945,19 @@ function render() {
     return
   }
   if (screen === 'walkin' && walkin && walkinVillage) {
-    const eff = effectiveTemperament(walkinVillage.temperament, world.state.fear)
-    const note = walkin.hostile
-      ? 'The people remember what your kind has done. They close in...'
-      : eff > 0.66
-        ? 'The people watch you with open curiosity.'
-        : 'The people keep their distance, wary of the stranger.'
+    let note: string
+    if (walkin.hostile) {
+      // hostile even with no fear to blame: the village's own nature, not your deeds
+      note =
+        walkinVillage.temperament < HOSTILE_BELOW
+          ? 'This people wants no strangers here. They close in...'
+          : 'The people remember what your kind has done. They close in...'
+    } else {
+      note =
+        moodOf(walkin.mood) === 'friendly'
+          ? 'The people watch you with open curiosity.'
+          : 'The people keep their distance, wary of the stranger.'
+    }
     drawWalkin(ctx, canvas.width, canvas.height, walkin, tileset, note, performance.now() / 1000, spriteBank)
     if (flash.t > 0) drawResult(ctx, canvas.width, canvas.height, flash.text, 12)
     return
@@ -987,24 +985,27 @@ function render() {
   if (!encounter && screen === 'playing') {
     let text = ''
     let color = '#e8e8ee'
-    if (world.sailing) {
-      if (world.explorer.x < 4) {
+    const target = currentTarget()
+    switch (target?.kind) {
+      case 'spain':
         text = 'Press E to sail home to Spain'
         color = '#f4c430'
-      } else if (landingSpots(world.map, world.explorer.x, world.explorer.y).length) {
+        break
+      case 'landfall':
         text = 'Press E to make landfall'
+        break
+      case 'village': {
+        const golden = target.village.golden
+        text = `Press E to approach ${golden ? 'the golden city' : 'the village'}`
+        if (golden) color = '#f4c430'
+        break
       }
-    } else {
-      const prompt = nearestVillage()
-      const outpost = nearestOutpost()
-      if (prompt) {
-        text = `Press E to approach ${prompt.golden ? 'the golden city' : 'the village'}`
-        if (prompt.golden) color = '#f4c430'
-      } else if (outpost && outpost.stock >= 1) {
-        text = `Press E to resupply (${Math.floor(outpost.stock)} in stores)`
-      } else if (nearestShipIndex() >= 0) {
+      case 'outpost':
+        text = `Press E to resupply (${Math.floor(target.outpost.stock)} in stores)`
+        break
+      case 'ship':
         text = 'Press E to board your ship'
-      }
+        break
     }
     if (text) {
       ctx.font = "16px 'Courier New', monospace"
@@ -1012,17 +1013,24 @@ function render() {
       ctx.fillRect(canvas.width / 2 - 185, canvas.height - 56, 370, 32)
       ctx.fillStyle = color
       ctx.textAlign = 'center'
-      ctx.fillText(text, canvas.width / 2, canvas.height - 34)
+      ctx.textBaseline = 'middle' // centred in the plate
+      ctx.fillText(text, canvas.width / 2, canvas.height - 40)
       ctx.textAlign = 'left'
+      ctx.textBaseline = 'alphabetic'
     }
   }
 
   // quiet key reference in the corner
   if (screen === 'playing' && !encounter) {
+    const hint = world.sailing ? 'E interact · M sound · Esc menu' : 'E interact · F fort · M sound · Esc menu'
     ctx.font = "12px 'Courier New', monospace"
-    ctx.fillStyle = 'rgba(154,154,166,0.55)'
     ctx.textAlign = 'left'
-    ctx.fillText('E interact · F fort · M sound · Esc menu', 12, canvas.height - 12)
+    ctx.textBaseline = 'alphabetic'
+    // a 1px dark copy keeps it legible over bright terrain without a plate
+    ctx.fillStyle = 'rgba(0,0,0,0.8)'
+    ctx.fillText(hint, 13, canvas.height - 11)
+    ctx.fillStyle = '#b4b4be'
+    ctx.fillText(hint, 12, canvas.height - 12)
   }
 
   // the banner yields while a decision panel is up — no overlapping chrome
@@ -1037,14 +1045,12 @@ function render() {
       canvas.width,
       canvas.height,
       won,
-      score(world.state, world.fog.revealedCount) + career.banked,
+      finalScore(),
       career,
       {
         cities: world.state.citiesFound,
         day: world.state.day,
-        villages: world.state.villagesContacted,
-        gold: Math.floor(world.state.gold) + career.banked,
-        charted: world.fog.revealedCount,
+        parts: scoreParts(world.state, world.fog.revealedCount),
       },
       performance.now() / 1000,
     )

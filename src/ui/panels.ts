@@ -1,9 +1,9 @@
-import type { Village } from '../world/villages'
+import { CITIES_OF_GOLD, type Village } from '../world/villages'
 import { type Outfit, outfitCost, remainingBudget, PRICES, BUDGET } from '../game/outfit'
-import { TRADE_GOODS, GIFT_GOODS, effectiveTemperament } from '../game/encounter'
+import { TRADE_GOODS, GIFT_GOODS, effectiveTemperament, moodOf, type Mood } from '../game/encounter'
 import { bestScore, type ChronicleEntry } from '../game/chronicle'
 import { rankTitle, rankIndex, budgetFor, RANKS, type Career } from '../game/career'
-import { dailyAppetite, type GameState } from '../game/state'
+import { dailyAppetite, type GameState, type ScoreParts } from '../game/state'
 import { addHit, hovered } from './hit'
 import { drawChief, drawIdol, drawShip, drawVillager, drawShadow, drawVillage } from '../art/sprites'
 
@@ -259,8 +259,8 @@ export function drawStartScreen(
   const lines: { text: string; color: string; hit?: string }[] = [
     'Chart the unknown coast and interior. Find native villages —',
     'trade with them, win them over with gifts, or raid them for gold.',
-    'Manage your food, crew, and morale. Discover all seven',
-    'fabled Cities of Gold before your expedition falls apart.',
+    'Manage food, crew, and morale, and find all seven Cities of Gold.',
+    'Sail off the western edge to bank gold in Spain.',
     '',
     'MOVE  W A S D / arrows      INTERACT  E / Space      CHOOSE  1 2 3',
     'FORT  F      SOUND  M      MENU  Esc',
@@ -310,7 +310,7 @@ export function drawStartScreen(
     y += 24
     for (const e of chronicle.slice(0, rows)) {
       const verdict = e.won ? ' WON' : 'LOST'
-      const line = `${verdict}   score ${String(e.score).padStart(5)}   ${String(e.gold).padStart(4)} gold   ${e.cities}/7 cities   day ${e.day}`
+      const line = `${verdict}   score ${String(e.score).padStart(5)}   ${String(e.gold).padStart(4)} gold   ${e.cities}/${CITIES_OF_GOLD} cities   day ${e.day}`
       center(ctx, line, cx, y, "14px 'Courier New', monospace", e.won ? '#e0d18a' : '#8a8a94')
       y += 21
     }
@@ -356,7 +356,7 @@ export function drawSpainScreen(
   const next = idx < RANKS.length - 1 ? RANKS[idx + 1] : null
   const lines = [
     `Treasury: ${career.banked} gold banked`,
-    `Cities of Gold found: ${state.citiesFound}/7    Villages contacted: ${state.villagesContacted}`,
+    `Cities of Gold found: ${state.citiesFound}/${CITIES_OF_GOLD}    Villages contacted: ${state.villagesContacted}`,
     `Word of your deeds — fear among the peoples: ${Math.floor(state.fear)}`,
   ]
   let y = viewH / 2 - 52
@@ -441,6 +441,10 @@ export function drawSpainScreen(
   ctx.restore()
 }
 
+const MOOD_COLOR: Record<Mood, string> = { friendly: '#7fd17f', wary: '#e0b34f', hostile: '#c0504d' }
+/** what the mood means for the deal on the table */
+const MOOD_TERMS: Record<Mood, string> = { friendly: 'generous terms', wary: 'they bargain hard', hostile: 'they want you gone' }
+
 export function drawEncounter(
   ctx: CanvasRenderingContext2D,
   viewW: number,
@@ -451,7 +455,8 @@ export function drawEncounter(
   t = 0,
 ): void {
   const eff = effectiveTemperament(v.temperament, fear)
-  const hostile = eff <= 0.33
+  const mood = moodOf(eff)
+  const hostile = mood === 'hostile'
   const w = Math.min(600, viewW - 24)
   const H = 332
   const { x, y } = panel(ctx, viewW, viewH, w, H, hostile ? '#c0504d' : '#f4c430')
@@ -466,7 +471,7 @@ export function drawEncounter(
   ctx.beginPath()
   ctx.rect(x + 14, gy, w - 28, gh)
   ctx.clip()
-  ctx.fillStyle = hostile ? '#43302a' : eff > 0.66 ? '#3d5f32' : '#44523a'
+  ctx.fillStyle = { hostile: '#43302a', wary: '#44523a', friendly: '#3d5f32' }[mood]
   ctx.fillRect(x + 14, gy, w - 28, gh)
   const rng0 = ((v.x * 73856093) ^ (v.y * 19349663)) >>> 0
   ctx.fillStyle = 'rgba(20,28,16,0.5)'
@@ -492,8 +497,7 @@ export function drawEncounter(
   ctx.lineWidth = 1
   ctx.strokeRect(x + 14.5, gy + 0.5, w - 29, gh)
 
-  const mood = eff > 0.66 ? 'friendly' : eff > 0.33 ? 'wary' : 'hostile'
-  const moodColor = eff > 0.66 ? '#7fd17f' : eff > 0.33 ? '#e0b34f' : '#c0504d'
+  const moodColor = MOOD_COLOR[mood]
   ctx.font = "15px 'Courier New', monospace"
   ctx.textAlign = 'center'
   ctx.fillStyle = '#9a9aa6'
@@ -510,16 +514,16 @@ export function drawEncounter(
   ctx.fillStyle = '#9a9aa6'
   ctx.fillText(post, mx, y + 158)
 
-  // what the mood means for the deal on the table
-  const terms = eff > 0.66 ? 'generous terms' : eff > 0.33 ? 'they bargain hard' : 'they want you gone'
+  const terms = MOOD_TERMS[mood]
   const noGoods = goods <= 0
-  const opts: [string, string, string, boolean][] = [
-    ['1', 'Trade', `goods for gold & food (${TRADE_GOODS}) — ${terms}`, noGoods],
-    ['2', 'Gift', `earn goodwill & rumors (${GIFT_GOODS} goods)`, noGoods],
-    ['3', 'Attack', `seize their gold (risks crew${v.population > 250 ? ', many defenders' : ''})`, false],
+  // [key, verb, description, disabled, what to say instead when disabled]
+  const opts: [string, string, string, boolean, string][] = [
+    ['1', 'Trade', `goods for gold & food (${TRADE_GOODS}) — ${terms}`, noGoods, 'no goods left to trade'],
+    ['2', 'Gift', `earn goodwill & rumors (${GIFT_GOODS} goods)`, noGoods, 'no goods to give'],
+    ['3', 'Attack', `seize their gold (risks crew${v.population > 250 ? ', many defenders' : ''})`, false, ''],
   ]
   let ly = y + 192
-  for (const [k, verb, desc, disabled] of opts) {
+  for (const [k, verb, desc, disabled, instead] of opts) {
     const hov = !disabled && hovered(`enc-${k}`)
     if (hov) {
       ctx.fillStyle = 'rgba(244,196,48,0.09)'
@@ -529,8 +533,11 @@ export function drawEncounter(
     ctx.fillStyle = disabled ? '#5a5a64' : hov ? '#ffe27a' : '#f4c430'
     ctx.fillText(`[${k}] ${verb}`, x + 32, ly)
     ctx.fillStyle = disabled ? '#5a5a64' : hov ? '#f0f0f4' : '#c9c9d2'
+    const text = disabled ? instead : desc
     ctx.font = "14px 'Courier New', monospace"
-    ctx.fillText(desc + (disabled ? '  — no goods!' : ''), x + 150, ly)
+    // the description runs from x + 150 to the panel's inner edge; step down rather than squeeze
+    if (ctx.measureText(text).width > w - 170) ctx.font = "13px 'Courier New', monospace"
+    ctx.fillText(text, x + 150, ly)
     if (!disabled) addHit(`enc-${k}`, x + 20, ly - 20, w - 40, 30)
     ly += 34
   }
@@ -569,9 +576,8 @@ export function drawResult(ctx: CanvasRenderingContext2D, viewW: number, _viewH:
 export interface ExpeditionSummary {
   cities: number
   day: number
-  villages: number
-  gold: number
-  charted: number
+  /** the score's terms; with the career's banked gold they sum to the final score */
+  parts: ScoreParts
 }
 
 export function drawGameOver(
@@ -601,11 +607,12 @@ export function drawGameOver(
   const cx = viewW / 2
 
   // the seven cities, tallied: gold for each one found, ash for the rest
-  const cities = summary?.cities ?? (won ? 7 : 0)
+  const cities = summary?.cities ?? (won ? CITIES_OF_GOLD : 0)
   const arcY = viewH / 2 - 128
-  for (let i = 0; i < 7; i++) {
-    const ax = cx + (i - 3) * 64
-    const ay = arcY + (i - 3) * (i - 3) * 3.4 // outer cities dip — a strand of beads
+  const mid = (CITIES_OF_GOLD - 1) / 2
+  for (let i = 0; i < CITIES_OF_GOLD; i++) {
+    const ax = cx + (i - mid) * 64
+    const ay = arcY + (i - mid) * (i - mid) * 3.4 // outer cities dip — a strand of beads
     const found = i < cities
     ctx.save()
     ctx.translate(ax, ay)
@@ -646,13 +653,19 @@ export function drawGameOver(
   center(ctx, `Final score: ${score}`, cx, viewH / 2 + 40, "22px 'Courier New', monospace", '#ffffff')
   if (summary) {
     // the reckoning, item by item — how the score came to be
-    const parts = [
-      `${summary.gold} gold`,
-      `+${Math.floor(summary.charted * 0.5)} lands charted`,
-      `+${summary.villages * 20} peoples met`,
-      `−${summary.day * 5} for ${summary.day} ${summary.day === 1 ? 'day' : 'days'} at large`,
+    const p = summary.parts
+    const terms = [
+      `${p.gold} gold`,
+      `+${p.charted} lands charted`,
+      `+${p.villages} peoples met`,
+      `−${Math.abs(p.days)} for ${summary.day} ${summary.day === 1 ? 'day' : 'days'} at large`,
     ]
-    center(ctx, parts.join('   ·   '), cx, viewH / 2 + 66, "13px 'Courier New', monospace", '#8a8a94')
+    if (career && career.banked > 0) terms.push(`+${career.banked} banked`)
+    const font = "13px 'Courier New', monospace"
+    ctx.font = font
+    const wide = terms.join('   ·   ')
+    const line = ctx.measureText(wide).width <= viewW - 48 ? wide : terms.join(' · ')
+    center(ctx, line, cx, viewH / 2 + 66, font, '#8a8a94')
   }
   if (career) {
     const line = `${rankTitle(career.banked)} · ${career.voyages} ${career.voyages === 1 ? 'voyage' : 'voyages'} completed · ${career.banked} gold banked`
