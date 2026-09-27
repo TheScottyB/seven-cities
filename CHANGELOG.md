@@ -14,8 +14,9 @@ The first public release.
   outfitting screen warns before a new expedition replaces it, and the game says so when
   the browser blocks storage.
 - **Controls.** One rule decides what `E` acts on, and the on-screen prompt reads the same
-  rule. Keys work across keyboard layouts and input methods. Holding `←` or `→` repeats the
-  adjustment on the outfitting screen. Mute is remembered, and the corner key hint drops
+  rule. Arrow keys move on every keyboard layout, and `W A S D` also move by key position
+  on QWERTY, AZERTY and similar layouts. Keys still register with an input method active.
+  Holding `←` or `→` repeats the adjustment on the outfitting screen. Mute is remembered, and the corner key hint drops
   `F` at sea.
 - **Accessibility.** HUD warnings carry a `!` mark as well as a colour, the OS
   reduced-motion setting is respected, and touch-only devices get a keyboard-required

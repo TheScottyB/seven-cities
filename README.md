@@ -42,6 +42,8 @@ press on the title screen only turns the sound on.
 - Menus are clickable too: the title lines, the outfitting rows, their `<` `>` arrows and
   the set-sail line, the parley choices and walk-away line, and the Enter lines in Spain
   and at game over.
+- `W A S D` move by key position on QWERTY, AZERTY and similar layouts. On Colemak or
+  Dvorak some of those keys are command letters, so move with the arrow keys.
 - Holding `←` or `→` on the outfitting screen repeats the adjustment.
 - During an expedition the game pauses when the window loses focus or the tab is hidden.
   The next key or click resumes play and does nothing else.
