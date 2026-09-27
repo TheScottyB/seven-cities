@@ -1,4 +1,5 @@
 import { makeScene, tickScene, isBlockedAt } from '../src/game/walkin'
+import { Facing } from '../src/game/explorer'
 import type { Village } from '../src/world/villages'
 
 function village(over: Partial<Village> = {}): Village {
@@ -88,4 +89,19 @@ test('huts block movement', () => {
   const [hx, hy] = s.huts[0]
   expect(isBlockedAt(s, hx + 0.5, hy + 0.5)).toBe(true)
   expect(isBlockedAt(s, s.w / 2, s.h - 1)).toBe(false) // entrance is open
+})
+
+test('sliding down the west wall of a hut faces the slide, not the keys', () => {
+  const s = makeScene(village(), 0)
+  // just clear of a hut's west face, level with it, with room to step south
+  const spot = s.huts
+    .map(([hx, hy]) => ({ x: hx + 0.5 - 0.91, y: hy + 0.2 }))
+    .find((p) => !isBlockedAt(s, p.x, p.y) && !isBlockedAt(s, p.x, p.y + 0.1))
+  expect(spot).toBeDefined()
+  s.px = spot!.x
+  s.py = spot!.y
+  tickScene(s, 1, 1, 1 / 60)
+  expect(s.px).toBe(spot!.x)
+  expect(s.py).toBeGreaterThan(spot!.y)
+  expect(s.facing).toBe(Facing.S)
 })

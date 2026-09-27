@@ -1,7 +1,7 @@
 import type { Village } from '../world/villages'
 import { makeRng, type Rng } from '../world/rng'
 import { effectiveTemperament } from './encounter'
-import { Facing, GAIT_CYCLE } from './explorer'
+import { Facing, GAIT_CYCLE, facingFrom } from './explorer'
 
 /**
  * The walk-in scene: entering a village puts you on foot among its people.
@@ -52,6 +52,8 @@ export type WalkinStatus = 'walking' | 'chief' | 'left' | 'driven-off'
 const PLAYER_SPEED = 3.4
 const CHASE_SPEED = 2.3
 const WANDER_SPEED = 0.8
+/** Gait per unit walked. PLAYER_SPEED is slow in units/sec; doubling keeps his cadence near the overworld's. */
+const WALKIN_STRIDE = 2
 
 export function makeScene(v: Village, fear: number): WalkinScene {
   const rng = makeRng(((v.x * 7919 + v.y * 104729) ^ 0x5f3759df) >>> 0)
@@ -136,9 +138,8 @@ export function tickScene(s: WalkinScene, dx: number, dy: number, dt: number): W
     const ddx = s.px - x0
     const ddy = s.py - y0
     if (ddx !== 0 || ddy !== 0) {
-      s.facing =
-        Math.abs(ddx) > Math.abs(ddy) ? (ddx > 0 ? Facing.E : Facing.W) : ddy > 0 ? Facing.S : Facing.N
-      s.gait = (s.gait + Math.hypot(ddx, ddy) * 2) % GAIT_CYCLE
+      s.facing = facingFrom(ddx, ddy)
+      s.gait = (s.gait + Math.hypot(ddx, ddy) * WALKIN_STRIDE) % GAIT_CYCLE
     }
   }
   if (s.py > s.h - 0.3) return 'left'

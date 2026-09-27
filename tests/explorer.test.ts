@@ -29,15 +29,21 @@ test('stays within bounds', () => {
 test('facing follows the displacement, not the input', () => {
   const m = generateMap(123)
   const e = makeExplorer(m)
-  // walk east until something actually moves, then check where he is looking
-  moveExplorer(m, e, 1, 0, 0.05)
-  if (e.moving) expect(e.facing).toBe(Facing.E)
-  moveExplorer(m, e, -1, 0, 0.05)
-  if (e.moving) expect(e.facing).toBe(Facing.W)
-  moveExplorer(m, e, 0, 1, 0.05)
-  if (e.moving) expect(e.facing).toBe(Facing.S)
-  moveExplorer(m, e, 0, -1, 0.05)
-  if (e.moving) expect(e.facing).toBe(Facing.N)
+  // From the centre of the walkable landing tile, a step this short (at most
+  // 8 * 1.8 * 0.02 < 0.5 tiles) never leaves the tile, so every move lands.
+  const cases: [number, number, number][] = [
+    [1, 0, Facing.E],
+    [-1, 0, Facing.W],
+    [0, 1, Facing.S],
+    [0, -1, Facing.N],
+  ]
+  for (const [dx, dy, facing] of cases) {
+    e.x = m.landing.x + 0.5
+    e.y = m.landing.y + 0.5
+    moveExplorer(m, e, dx, dy, 0.02)
+    expect(e.moving).toBe(true)
+    expect(e.facing).toBe(facing)
+  }
 })
 
 test('standing still clears moving and leaves gait alone', () => {
@@ -50,11 +56,15 @@ test('standing still clears moving and leaves gait alone', () => {
   expect(e.gait).toBe(g)
 })
 
-/** A walkable tile with a mountain directly to its east, if the map has one. */
-function mountainWall(m: GameMap): { x: number; y: number } | null {
+/**
+ * A walkable tile with a mountain directly to its east, if the map has one.
+ * With `openSouth`, the tile below must be walkable too.
+ */
+function mountainWall(m: GameMap, openSouth = false): { x: number; y: number } | null {
   for (let y = 1; y < m.height - 1; y++) {
     for (let x = 1; x < m.width - 2; x++) {
       if (!isWalkable(m.tiles[y * m.width + x])) continue
+      if (openSouth && !isWalkable(m.tiles[(y + 1) * m.width + x])) continue
       if (m.tiles[y * m.width + x + 1] === TILE.MOUNTAIN) return { x, y }
     }
   }
@@ -73,6 +83,19 @@ test('walking into a mountain leaves gait unchanged — he stops mid-stride', ()
   for (let i = 0; i < 20; i++) moveExplorer(m, e, 1, 0, 0.05)
   expect(e.moving).toBe(false)
   expect(e.gait).toBe(before)
+})
+
+test('pushing diagonally into a wall slides along it and faces the slide', () => {
+  const m = generateMap(123)
+  const wall = mountainWall(m, true)
+  expect(wall).not.toBeNull()
+  const e = makeExplorer(m)
+  e.x = wall!.x + 0.99
+  e.y = wall!.y + 0.2
+  moveExplorer(m, e, 1, 1, 0.05)
+  expect(e.x).toBe(wall!.x + 0.99)
+  expect(e.moving).toBe(true)
+  expect(e.facing).toBe(Facing.S)
 })
 
 test('gait wrap is commensurate with the 4-frame walk cycle', () => {

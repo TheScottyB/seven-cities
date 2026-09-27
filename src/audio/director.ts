@@ -27,7 +27,6 @@ export type CueId =
 
 export interface AudioCue {
   id: CueId
-  gain?: number
 }
 
 export interface AudioSnapshot {

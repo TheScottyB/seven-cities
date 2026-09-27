@@ -1,6 +1,7 @@
 import { generateMap } from '../src/world/mapgen'
-import { placeVillages, nearestUnvisitedGolden, reachableAmphibious } from '../src/world/villages'
-import { isWalkable } from '../src/world/tiles'
+import { placeVillages, nearestUnvisitedGolden, reachableAmphibious, CITIES_OF_GOLD } from '../src/world/villages'
+import { findMooring, findMoorings } from '../src/game/ship'
+import { isWalkable, TILE } from '../src/world/tiles'
 import { seedFromString } from '../src/world/rng'
 
 test('places villages on walkable land', () => {
@@ -13,7 +14,7 @@ test('villages never sit on a river tile', () => {
   for (const seed of [123, 1, 999]) {
     const m = generateMap(seed)
     for (const v of placeVillages(m, 28)) {
-      expect(m.tiles[v.y * m.width + v.x]).not.toBe(8) // TILE.RIVER
+      expect(m.tiles[v.y * m.width + v.x]).not.toBe(TILE.RIVER)
     }
   }
 })
@@ -56,35 +57,26 @@ test('nearestUnvisitedGolden skips visited and non-golden villages', () => {
   expect(nearestUnvisitedGolden(vs, 0, 0)).toBeNull()
 })
 
-test('no village hides in a sea the ship cannot reach (one-ship model)', () => {
+test('every map is winnable: no village hides in a sea the fleet cannot reach', () => {
   // regression: seed "12" used to place a City of Gold on an island in an
-  // eastern ocean basin disconnected from the ship's own sea — unwinnable,
-  // since the one ship can never portage between basins. Checked here with
-  // an independent implementation of the one-ship reachability rule.
-  const OCEAN = 0
-  for (const seedStr of ['12', '1492', '9', '26']) {
+  // eastern ocean basin disconnected from the fleet's home sea — unwinnable,
+  // since a ship can never portage between basins. Checked here with an
+  // independent flood of the reachability rule, seeded from the real mooring.
+  const seeds = [
+    ...Array.from({ length: 100 }, (_, i) => String(i + 1)),
+    '12', '1492', '9', '26',
+    '2024', '5000', '8191', '11491',
+  ]
+  for (const seedStr of seeds) {
     const m = generateMap(seedFromString(seedStr))
     const { width: W, height: H, tiles, landing } = m
     const idx = (x: number, y: number) => y * W + x
 
-    // flood the ship's own sea from the ocean tile nearest the landing
+    // flood the home sea from the fleet's first mooring
+    const s0 = findMooring(m)
+    const start = idx(Math.floor(s0.x), Math.floor(s0.y))
+    expect(tiles[start], seedStr).toBe(TILE.OCEAN)
     const mainSea = new Uint8Array(W * H)
-    let start = -1
-    outer: for (let r = 1; r < 24; r++) {
-      for (let dy = -r; dy <= r; dy++) {
-        for (let dx = -r; dx <= r; dx++) {
-          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
-          const x = landing.x + dx
-          const y = landing.y + dy
-          if (x < 0 || y < 0 || x >= W || y >= H) continue
-          if (tiles[idx(x, y)] === OCEAN) {
-            start = idx(x, y)
-            break outer
-          }
-        }
-      }
-    }
-    expect(start).toBeGreaterThanOrEqual(0)
     const q = [start]
     mainSea[start] = 1
     for (let qi = 0; qi < q.length; qi++) {
@@ -94,14 +86,22 @@ test('no village hides in a sea the ship cannot reach (one-ship model)', () => {
       for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue
         const j = idx(nx, ny)
-        if (!mainSea[j] && tiles[j] === OCEAN) {
+        if (!mainSea[j] && tiles[j] === TILE.OCEAN) {
           mainSea[j] = 1
           q.push(j)
         }
       }
     }
 
-    // expedition reach: walk anywhere on land, sail only the main sea,
+    // every ship of the largest fleet moors in that same sea — never the
+    // on-land fallback, never a separate basin
+    for (const sh of findMoorings(m, 4)) {
+      const i = idx(Math.floor(sh.x), Math.floor(sh.y))
+      expect(tiles[i], seedStr).toBe(TILE.OCEAN)
+      expect(mainSea[i], seedStr).toBe(1)
+    }
+
+    // expedition reach: walk anywhere on land, sail only the home sea,
     // board/land freely where land meets that sea
     const reach = new Uint8Array(W * H)
     const q2 = [idx(landing.x, landing.y)]
@@ -114,9 +114,7 @@ test('no village hides in a sea the ship cannot reach (one-ship model)', () => {
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue
         const j = idx(nx, ny)
         if (reach[j]) continue
-        const t = tiles[j]
-        const passable = (isWalkable(t) || mainSea[j] === 1)
-        if (passable) {
+        if (isWalkable(tiles[j]) || mainSea[j] === 1) {
           reach[j] = 1
           q2.push(j)
         }
@@ -124,10 +122,9 @@ test('no village hides in a sea the ship cannot reach (one-ship model)', () => {
     }
 
     const vs = placeVillages(m, 28)
-    expect(vs.filter((v) => v.golden).length).toBe(7)
-    for (const v of vs) {
-      expect(reach[idx(v.x, v.y)]).toBe(1)
-    }
+    expect(vs.length, seedStr).toBeGreaterThanOrEqual(20)
+    expect(vs.filter((v) => v.golden).length, seedStr).toBe(CITIES_OF_GOLD)
+    for (const v of vs) expect(reach[idx(v.x, v.y)], seedStr).toBe(1)
   }
 })
 

@@ -2,8 +2,10 @@
  * One-shot ambient textures: the creak of a hull, a rigging clang, a gull,
  * a wave swell, a drone note, the low pulse of approaching danger. Like the
  * cue and score synths, everything renders onto any BaseAudioContext so
- * tests can measure the actual signal.
+ * the dev hook __dbg.renderTexture can measure the actual signal.
  */
+import { midiHz } from './music'
+
 export type TextureKind = 'creak' | 'clang' | 'gull' | 'swell' | 'pad' | 'pulse'
 
 export interface TextureOpts {
@@ -28,8 +30,6 @@ export function noiseBuffer(ctx: BaseAudioContext, seconds: number): AudioBuffer
   }
   return buf
 }
-
-const midiHz = (m: number) => 440 * Math.pow(2, (m - 69) / 12)
 
 function osc(
   ctx: BaseAudioContext,

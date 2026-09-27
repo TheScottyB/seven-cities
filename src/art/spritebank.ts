@@ -13,27 +13,6 @@
  *   per frame, so the whole bank is prebuilt once and only ever blitted after
  *   that. Nothing in this module touches the DOM at module scope.
  *
- * API — for the renderer integration
- * ---------------------------------------------------------------------------
- *   buildSpriteBank(): SpriteBank
- *       Call ONCE at boot, before the first frame. Allocates ~24 small
- *       canvases. Never call it inside the game loop.
- *
- *   drawExplorerSprite(g, bank, cx, cy, facing, gait)
- *       Draws the conquistador standing on (cx, cy), where cy is the GROUND
- *       point (his feet), not his centre. `facing` is the Facing enum value
- *       from src/game/explorer.ts (S=0, W=1, E=2, N=3). `gait` is the
- *       explorer's accumulated gait counter — pass 0 when standing still to
- *       get the neutral pose.
- *
- *   drawShipSprite(g, bank, cx, cy, facing, t)
- *       Draws the caravel with its waterline on (cx, cy). `t` is elapsed
- *       seconds; it selects the heel frame and adds a 1px integer bob. Pass
- *       t < 0 for a still, un-heeled ship (map/minimap/menus).
- *
- *   Both draw calls are pure integer blits — snap cx/cy yourself if the camera
- *   hands you fractional world coordinates and you want a stable figure.
- *
  * PALETTE NOTE
  *   The obvious steel ramp (#e2e6ef / #aeb2bf) is cool blue-white and fights
  *   this game's warm gold-on-navy world. The armour here is warmed toward
@@ -53,6 +32,7 @@ import {
   type Grid,
   type Palette,
 } from './pixels'
+import { Facing, GAIT_RATE } from '../game/gait'
 
 // --- palettes --------------------------------------------------------------
 
@@ -89,9 +69,10 @@ const SHIP: Palette = {
 const FIG_W = 11
 /**
  * A flip about the cell maps column x to CELL-1-x, so art only mirrors onto
- * itself when it straddles column 11.5. Odd-width art cannot, which is why the
- * mirrored facings get a compensating pixel (MIRROR_DX) when they are drawn —
- * without it the conquistador hops sideways the instant he turns.
+ * itself when it straddles column 11.5. Odd-width art cannot: the mirrored
+ * figure lands one pixel right of the original, so the mirrored facing is
+ * drawn MIRROR_DX to the left to shift it back. Without that the conquistador
+ * hops sideways the instant he turns.
  */
 const FIG_X = Math.floor(ANCHOR_X - FIG_W / 2) // 6
 const MIRROR_DX = (CELL - FIG_W) % 2 // 1 for odd-width art in an even cell
@@ -229,21 +210,10 @@ export interface SpriteBank {
   cell: number
 }
 
-// Facing values, duplicated as plain numbers so src/art never imports src/game
-// (which would drag mapgen into the art layer). Keep in sync with
-// src/game/explorer.ts: S=0, W=1, E=2, N=3.
-const F_S = 0
-const F_W = 1
-const F_E = 2
-const F_N = 3
-
-/** Must match GAIT_RATE in src/game/explorer.ts (2.0, commensurate with % 8). */
-const GAIT_RATE = 2.0
-
 /** Caravel facings that are drawn from the mirrored E profile. */
 const SHIP_MIRRORED = [false, true, false, true] // S, W, E, N
 
-/** Build every sprite cell. Call ONCE at boot — never inside a frame. */
+/** Build every sprite cell. Call ONCE at boot, before the first frame — never inside a frame. */
 export function buildSpriteBank(): SpriteBank {
   const figShadow = shadowCell(ANCHOR_X, FIG_GROUND - 1, 4, 0.32)
   const shipShadow = shadowCell(ANCHOR_X, SHIP_WATERLINE + 1, 8, 0.24)
@@ -256,10 +226,10 @@ export function buildSpriteBank(): SpriteBank {
   const west = east.map(mirror) // the mirror trick — only valid because ANCHOR_X === CELL/2
 
   const explorer: HTMLCanvasElement[][] = []
-  explorer[F_S] = south
-  explorer[F_W] = west
-  explorer[F_E] = east
-  explorer[F_N] = north
+  explorer[Facing.S] = south
+  explorer[Facing.W] = west
+  explorer[Facing.E] = east
+  explorer[Facing.N] = north
 
   // Two heel frames: the rig above the deck rolls one pixel to leeward.
   const hullTop = 11
@@ -280,17 +250,19 @@ export function buildSpriteBank(): SpriteBank {
 }
 
 function clampFacing(facing: number | undefined): number {
-  return facing === F_W || facing === F_E || facing === F_N ? facing : F_S
+  return facing === Facing.W || facing === Facing.E || facing === Facing.N ? facing : Facing.S
 }
 
 /** Ships restored from a save carry no facing; they were moored heading east. */
 function clampShipFacing(facing: number | undefined): number {
-  return facing === F_W || facing === F_E || facing === F_N || facing === F_S ? facing : F_E
+  return facing === Facing.W || facing === Facing.E || facing === Facing.N || facing === Facing.S
+    ? facing
+    : Facing.E
 }
 
-/** Mirrored explorer facings need the odd-width compensation. */
-function figMirrorDx(facing: number): number {
-  return facing === F_W ? MIRROR_DX : 0
+/** Draw offset for the mirrored (west) explorer cell: shifts it back one pixel. */
+export function figMirrorDx(facing: number): number {
+  return facing === Facing.W ? -MIRROR_DX : 0
 }
 
 /** Gait counter -> walk-cycle frame. 4 frames; rate 2.0 divides the % 8 wrap exactly. */
@@ -299,8 +271,10 @@ export function gaitFrameIndex(gait: number): number {
 }
 
 /**
- * Draw the conquistador with his feet on (cx, cy).
- * `facing` uses Facing from src/game/explorer.ts; `gait` is his gait counter.
+ * Draw the conquistador with his feet on (cx, cy): cy is the ground point, not
+ * his centre. `facing` is a Facing value (S=0, W=1, E=2, N=3); anything else
+ * draws south. `gait` is his gait counter; 0 is the neutral standing pose.
+ * cx/cy are rounded here, so fractional camera coordinates are fine.
  */
 export function drawExplorerSprite(
   g: CanvasRenderingContext2D,
@@ -320,8 +294,10 @@ export function drawExplorerSprite(
 }
 
 /**
- * Draw the caravel with her waterline on (cx, cy). `t` is elapsed seconds and
- * drives both the heel frame and a 1px bob; pass t < 0 for a still ship.
+ * Draw the caravel with her waterline on (cx, cy). `facing` is a Facing value;
+ * undefined (a ship restored from a save) draws heading east. `t` is elapsed
+ * seconds and drives both the heel frame and a 1px bob; t < 0 (the default)
+ * draws a still, un-heeled ship for maps and menus.
  */
 export function drawShipSprite(
   g: CanvasRenderingContext2D,

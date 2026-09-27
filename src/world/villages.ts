@@ -14,36 +14,73 @@ export interface Village {
   depleted: boolean
 }
 
+/** The seven wealthiest settlements are the fabled Cities of Gold. */
+export const CITIES_OF_GOLD = 7
+
 /**
- * Tiles the expedition can actually reach with its ONE ship (4-connected).
- * You may walk any walkable land and sail only the ship's own sea — the
- * ocean component beside the landing where the caravel moors. Land and that
- * sea interchange freely at any coast (board / step ashore), but the ship
+ * How far from the landing, in Chebyshev rings, to look for the fleet's
+ * moorings. The landing is the west-most tile of the main landmass, so its
+ * nearest ocean is normally one ring out and a four-ship fleet fits in two.
+ */
+export const MOORING_RADIUS = 11
+
+/**
+ * Visit the ocean tiles around (x, y) nearest first: ring r = 1..maxR, each
+ * ring scanned row by row (dy, then dx). `visit` gets the tile index and
+ * returns true to keep going. Both the mooring search and the home-sea flood
+ * go through this, so they always agree on which tile is nearest.
+ */
+export function nearestOceanRing(
+  map: GameMap,
+  x: number,
+  y: number,
+  maxR: number,
+  visit: (i: number) => boolean,
+): void {
+  const { width: w, height: h, tiles } = map
+  for (let r = 1; r <= maxR; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue // ring only
+        const tx = x + dx
+        const ty = y + dy
+        if (tx < 0 || ty < 0 || tx >= w || ty >= h) continue
+        const i = ty * w + tx
+        if (tiles[i] === TILE.OCEAN && !visit(i)) return
+      }
+    }
+  }
+}
+
+/** Index of the ocean tile nearest (x, y) within maxR rings, or -1 if none. */
+export function nearestOceanIndex(map: GameMap, x: number, y: number, maxR: number): number {
+  let found = -1
+  nearestOceanRing(map, x, y, maxR, (i) => {
+    found = i
+    return false
+  })
+  return found
+}
+
+/**
+ * Tiles the expedition can actually reach (4-connected). You may walk any
+ * walkable land and sail only the fleet's home sea: the ocean component
+ * 4-connected to the ocean tile nearest the landing. findMoorings must anchor
+ * every ship in that component (tests/villages.test.ts enforces it), so no
+ * hull ever starts in a basin the rest of the fleet cannot reach. Land and the
+ * home sea interchange freely at any coast (board / step ashore), but a ship
  * can never portage into a separate basin, so other ocean components are
  * off-limits. Villages are placed on this set: islands in the home sea are
- * fair game, but nothing hides behind water the ship cannot enter.
+ * fair game, but nothing hides behind water the fleet cannot enter.
  */
 export function reachableAmphibious(map: GameMap): Uint8Array {
   const { width: w, height: h, tiles, landing } = map
   const idx = (x: number, y: number) => y * w + x
 
-  // flood the ship's sea from the ocean tile nearest the landing (the mooring)
+  // flood the home sea from the ocean tile nearest the landing (the mooring);
+  // -1 means no ocean in range, and then no sea is passable at all
   const mainSea = new Uint8Array(w * h)
-  let mooring = -1
-  outer: for (let r = 1; r < 24; r++) {
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
-        const x = landing.x + dx
-        const y = landing.y + dy
-        if (x < 0 || y < 0 || x >= w || y >= h) continue
-        if (tiles[idx(x, y)] === TILE.OCEAN) {
-          mooring = idx(x, y)
-          break outer
-        }
-      }
-    }
-  }
+  const mooring = nearestOceanIndex(map, landing.x, landing.y, MOORING_RADIUS)
   if (mooring !== -1) {
     const q = [mooring]
     mainSea[mooring] = 1
@@ -119,10 +156,9 @@ export function placeVillages(map: GameMap, count: number, minDist = 8): Village
     })
   }
 
-  // the seven wealthiest settlements become the fabled Cities of Gold
   vs.slice()
     .sort((a, b) => b.wealth - a.wealth)
-    .slice(0, 7)
+    .slice(0, CITIES_OF_GOLD)
     .forEach((v) => {
       v.golden = true
       v.wealth += 500

@@ -69,3 +69,46 @@ test('a storm bleeds crew and morale, clamped at zero', () => {
   expect(s.crew).toBe(0)
   expect(s.morale).toBe(0)
 })
+
+test('storms bounce off the map edges instead of jumping across', () => {
+  const m = generateMap(123)
+  const w = makeWeather(123, m)
+  const dt = 0.25
+  let edgesMet = 0
+  for (const s of w.storms) {
+    const xEnd = s.x0 + s.vx * 3000
+    const yEnd = s.y0 + s.vy * 3000
+    if (xEnd < 0 || xEnd > m.width || yEnd < 0 || yEnd > m.height) edgesMet++
+    const step = Math.hypot(s.vx, s.vy) * dt
+    let prev = stormCenter(s, 0, m.width, m.height)
+    for (let t = dt; t <= 3000; t += dt) {
+      const c = stormCenter(s, t, m.width, m.height)
+      expect(c.x).toBeGreaterThanOrEqual(0)
+      expect(c.x).toBeLessThanOrEqual(m.width)
+      expect(c.y).toBeGreaterThanOrEqual(0)
+      expect(c.y).toBeLessThanOrEqual(m.height)
+      expect(Math.abs(c.x - prev.x)).toBeLessThanOrEqual(Math.abs(s.vx) * dt + 1e-9)
+      expect(Math.abs(c.y - prev.y)).toBeLessThanOrEqual(Math.abs(s.vy) * dt + 1e-9)
+      expect(Math.hypot(c.x - prev.x, c.y - prev.y)).toBeLessThanOrEqual(step + 1e-9)
+      prev = c
+    }
+  }
+  expect(edgesMet).toBeGreaterThan(0) // the run really does cross an edge
+})
+
+test('storms follow their straight course until they first reach an edge', () => {
+  const m = generateMap(123)
+  const s = makeWeather(123, m).storms[0]
+  const wrap = (v: number, n: number) => ((v % n) + n) % n
+  let checked = 0
+  for (let t = 0; t < 3000; t += 0.5) {
+    const x = s.x0 + s.vx * t
+    const y = s.y0 + s.vy * t
+    if (x < 0 || x > m.width || y < 0 || y > m.height) break
+    const c = stormCenter(s, t, m.width, m.height)
+    expect(c.x).toBeCloseTo(wrap(x, m.width), 9)
+    expect(c.y).toBeCloseTo(wrap(y, m.height), 9)
+    checked++
+  }
+  expect(checked).toBeGreaterThan(1)
+})

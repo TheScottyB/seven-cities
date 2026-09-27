@@ -7,7 +7,8 @@ import type { SceneControls } from './scene'
 /**
  * Thin WebAudio adapter. All decisions live in the director; this file only
  * turns AudioCue data into sound. `synthesize` takes any BaseAudioContext so
- * tests can render cues on an OfflineAudioContext and assert on the signal.
+ * the dev hook __dbg.renderCue can render cues on an OfflineAudioContext and
+ * measure the signal; tests/player.test.ts covers the player's bookkeeping.
  */
 
 function env(ctx: BaseAudioContext, at: number, peak: number, attack: number, decay: number): GainNode {
@@ -147,6 +148,19 @@ const AMBIENTS: Record<string, { hz: number; q: number; gain: number; lfoHz: num
   'amb-none': null,
 }
 
+/** The live ambience bed: every node it started, so a change can stop them all. */
+interface Bed {
+  src: AudioBufferSourceNode
+  f: BiquadFilterNode
+  g: GainNode
+  lfo: OscillatorNode
+  lfoGain: GainNode
+  drift: OscillatorNode | null
+  driftGain: GainNode | null
+}
+
+const LOG_CAP = 300
+
 export interface CueLogEntry {
   /** a CueId, or a music marker like 'music-title' / 'music-none' */
   id: string
@@ -156,8 +170,7 @@ export interface CueLogEntry {
 export class AudioPlayer {
   private ctx: AudioContext | null = null
   private master: GainNode | null = null
-  private ambientGain: GainNode | null = null
-  private ambientSrc: AudioBufferSourceNode | null = null
+  private bed: Bed | null = null
   private ambientId = 'amb-none'
   private muted = false
   private log: CueLogEntry[] = []
@@ -169,15 +182,14 @@ export class AudioPlayer {
   private themeUntil = 0
   private themeTimer: ReturnType<typeof setInterval> | null = null
   private controls: SceneControls | null = null
-  private texTimer: ReturnType<typeof setInterval> | null = null
   private texStats: Record<TextureKind, number> = { creak: 0, clang: 0, gull: 0, swell: 0, pad: 0, pulse: 0 }
 
-  /** Call from a user-gesture handler; browsers gate audio until then. */
-  unlock(): void {
-    if (this.ctx) {
-      if (this.ctx.state === 'suspended') void this.ctx.resume()
-      return
-    }
+  /**
+   * Call from a user-gesture handler; browsers gate audio until then.
+   * True only when this call created the context or asked a stopped one to run.
+   */
+  unlock(): boolean {
+    if (this.ctx) return this.wake()
     try {
       this.ctx = new AudioContext()
       this.master = this.ctx.createGain()
@@ -197,10 +209,31 @@ export class AudioPlayer {
       this.themeId = null
       this.theme = null
       if (pending) this.setTheme(pending)
-      this.texTimer = setInterval(() => this.textureTick(), 250)
+      // runs for the page's lifetime; nothing ever tears the player down
+      setInterval(() => this.textureTick(), 250)
+      return true
     } catch {
       this.ctx = null // no audio — the game plays silent
+      return false
     }
+  }
+
+  /** Pause the audio clock (tab hidden, game paused). Never creates a context. */
+  suspend(): void {
+    if (this.ctx) void this.ctx.suspend()
+  }
+
+  /** Undo suspend() or an OS interruption. Never creates a context. */
+  resume(): void {
+    this.wake()
+  }
+
+  private wake(): boolean {
+    // 'interrupted' (iOS calls, other apps) is missing from TS's AudioContextState
+    const state: string | undefined = this.ctx?.state
+    if (!this.ctx || (state !== 'suspended' && state !== 'interrupted')) return false
+    void this.ctx.resume()
+    return true
   }
 
   /**
@@ -211,7 +244,7 @@ export class AudioPlayer {
     if (id === this.themeId) return
     this.themeId = id
     const marker = id ? `music-${id}` : 'music-none'
-    if (this.log[this.log.length - 1]?.id !== marker) this.log.push({ id: marker, at: Date.now() })
+    if (this.log[this.log.length - 1]?.id !== marker) this.pushLog(marker)
     if (this.themeTimer) {
       clearInterval(this.themeTimer)
       this.themeTimer = null
@@ -246,21 +279,27 @@ export class AudioPlayer {
     this.themeTimer = setInterval(pump, 300)
   }
 
-  toggleMute(): boolean {
-    this.muted = !this.muted
+  /** Also honoured by a context created later (see unlock). */
+  setMuted(m: boolean): void {
+    this.muted = m
     if (this.master && this.ctx) {
-      this.master.gain.setTargetAtTime(this.muted ? 0 : 0.8, this.ctx.currentTime, 0.05)
+      this.master.gain.setTargetAtTime(m ? 0 : 0.8, this.ctx.currentTime, 0.05)
     }
+  }
+
+  toggleMute(): boolean {
+    this.setMuted(!this.muted)
     return this.muted
   }
 
-  isMuted(): boolean {
-    return this.muted
-  }
-
-  /** Every cue ever received (capped) — the agent-testable seam. */
+  /** Every cue and music marker received, newest LOG_CAP kept — the agent-testable seam. */
   getLog(): CueLogEntry[] {
     return this.log.slice()
+  }
+
+  private pushLog(id: string): void {
+    this.log.push({ id, at: Date.now() })
+    if (this.log.length > LOG_CAP) this.log.splice(0, this.log.length - LOG_CAP)
   }
 
   /** The world tells the soundscape how it feels, every frame. */
@@ -306,8 +345,7 @@ export class AudioPlayer {
 
   play(cues: AudioCue[]): void {
     for (const cue of cues) {
-      this.log.push({ id: cue.id, at: Date.now() })
-      if (this.log.length > 300) this.log.splice(0, this.log.length - 300)
+      this.pushLog(cue.id)
       if (!this.ctx || !this.master) continue
       if (cue.id.startsWith('amb-')) this.setAmbient(cue.id)
       else
@@ -345,24 +383,6 @@ export class AudioPlayer {
     }
   }
 
-  /** Release all timers and close the audio context. */
-  destroy(): void {
-    if (this.texTimer) {
-      clearInterval(this.texTimer)
-      this.texTimer = null
-    }
-    if (this.themeTimer) {
-      clearInterval(this.themeTimer)
-      this.themeTimer = null
-    }
-    if (this.chirpTimer) {
-      clearInterval(this.chirpTimer)
-      this.chirpTimer = null
-    }
-    void this.ctx?.close()
-    this.ctx = null
-  }
-
   private setAmbient(id: string): void {
     if (!this.ctx || !this.master || id === this.ambientId) return
     this.ambientId = id
@@ -376,13 +396,16 @@ export class AudioPlayer {
         if (Math.random() < 0.55) this.chirp()
       }, 2800)
     }
-    // fade out the old bed
-    if (this.ambientGain) {
-      this.ambientGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.4)
-      const old = this.ambientSrc
-      if (old) setTimeout(() => old.stop(), 1500)
-      this.ambientGain = null
-      this.ambientSrc = null
+    // fade out the old bed, then stop every oscillator it started on the
+    // audio clock; src.onended unhooks its nodes from the master
+    if (this.bed) {
+      const old = this.bed
+      old.g.gain.setTargetAtTime(0, this.ctx.currentTime, 0.4)
+      const end = this.ctx.currentTime + 1.5
+      old.src.stop(end)
+      old.lfo.stop(end)
+      old.drift?.stop(end)
+      this.bed = null
     }
     const spec = AMBIENTS[id]
     if (!spec) return
@@ -406,10 +429,12 @@ export class AudioPlayer {
     lfo.start()
     // at sea, the water's color itself drifts over minutes — no two
     // stretches of the crossing sound quite alike
+    let drift: OscillatorNode | null = null
+    let driftGain: GainNode | null = null
     if (id === 'amb-sea' || id === 'amb-storm') {
-      const drift = this.ctx.createOscillator()
+      drift = this.ctx.createOscillator()
       drift.frequency.value = 0.045
-      const driftGain = this.ctx.createGain()
+      driftGain = this.ctx.createGain()
       driftGain.gain.value = spec.hz * 0.35
       drift.connect(driftGain)
       driftGain.connect(f.frequency)
@@ -419,7 +444,12 @@ export class AudioPlayer {
     f.connect(g)
     g.connect(this.master)
     src.start()
-    this.ambientSrc = src
-    this.ambientGain = g
+    src.onended = () => {
+      g.disconnect()
+      f.disconnect()
+      lfoGain.disconnect()
+      driftGain?.disconnect()
+    }
+    this.bed = { src, f, g, lfo, lfoGain, drift, driftGain }
   }
 }

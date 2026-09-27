@@ -56,10 +56,14 @@ export function windFactor(angle: number, strength: number, dx: number, dy: numb
   return 1 + 0.45 * strength * Math.cos(heading - angle)
 }
 
-const wrap = (v: number, m: number) => ((v % m) + m) % m
+/** Reflect v into [0, m]: a triangle wave, so storms bounce off the map edges. */
+const fold = (v: number, m: number) => {
+  const p = ((v % (2 * m)) + 2 * m) % (2 * m)
+  return p > m ? 2 * m - p : p
+}
 
 export function stormCenter(s: StormCell, t: number, w: number, h: number): { x: number; y: number } {
-  return { x: wrap(s.x0 + s.vx * t, w), y: wrap(s.y0 + s.vy * t, h) }
+  return { x: fold(s.x0 + s.vx * t, w), y: fold(s.y0 + s.vy * t, h) }
 }
 
 export function stormAt(

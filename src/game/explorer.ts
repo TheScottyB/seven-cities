@@ -1,21 +1,8 @@
 import type { GameMap } from '../world/mapgen'
 import { tileInfo, isWalkable } from '../world/tiles'
+import { Facing, GAIT_CYCLE } from './gait'
 
-/** Sprite facings, in the order the sprite bank indexes them. */
-export const Facing = { S: 0, W: 1, E: 2, N: 3 } as const
-export type FacingValue = (typeof Facing)[keyof typeof Facing]
-
-/**
- * Length of the gait counter's wrap, in tiles travelled.
- *
- * This MUST stay commensurate with the walk cycle: the sprite bank picks its
- * frame with floor(gait * GAIT_RATE) & 3, so the wrap has to land on a whole
- * number of 4-frame cycles. 8 * 2.0 = 16 frame-steps = exactly 4 cycles. Pick
- * an incommensurate pair (2.2, say) and the figure visibly snaps mid-stride
- * every time the counter wraps.
- */
-export const GAIT_CYCLE = 8
-export const GAIT_RATE = 2.0
+export { Facing, GAIT_CYCLE, GAIT_RATE } from './gait'
 
 /** Anything that moves across the map and wants a facing-aware sprite. */
 export interface Mover {
@@ -32,6 +19,11 @@ export interface Mover {
  */
 export type PartialMover = { x: number; y: number } & Partial<Mover>
 
+/** The facing for a displacement; the dominant axis wins, and ties face S/N. */
+export function facingFrom(ddx: number, ddy: number): number {
+  return Math.abs(ddx) > Math.abs(ddy) ? (ddx > 0 ? Facing.E : Facing.W) : ddy > 0 ? Facing.S : Facing.N
+}
+
 /**
  * Derive facing and gait from the DISPLACEMENT actually achieved, not from the
  * input that was requested.
@@ -47,8 +39,7 @@ export function updateMover(m: PartialMover, x0: number, y0: number): void {
   const ddy = m.y - y0
   m.moving = ddx !== 0 || ddy !== 0
   if (!m.moving) return
-  m.facing =
-    Math.abs(ddx) > Math.abs(ddy) ? (ddx > 0 ? Facing.E : Facing.W) : ddy > 0 ? Facing.S : Facing.N
+  m.facing = facingFrom(ddx, ddy)
   m.gait = ((m.gait ?? 0) + Math.hypot(ddx, ddy)) % GAIT_CYCLE
 }
 

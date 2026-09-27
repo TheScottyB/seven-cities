@@ -7,7 +7,19 @@ type Roll = () => number
 export const TRADE_GOODS = 25
 export const GIFT_GOODS = 10
 
+/** effective-temperament cutoffs between hostile, wary and friendly villages */
+export const HOSTILE_BELOW = 0.3
+export const FRIENDLY_ABOVE = 0.66
+
+export type Mood = 'friendly' | 'wary' | 'hostile'
+
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+
+export function moodOf(eff: number): Mood {
+  if (eff < HOSTILE_BELOW) return 'hostile'
+  if (eff > FRIENDLY_ABOVE) return 'friendly'
+  return 'wary'
+}
 
 /**
  * Word travels. A village's willingness to deal is its own temperament
@@ -18,9 +30,10 @@ export function effectiveTemperament(temperament: number, fear: number): number 
 }
 
 /**
- * Called when the player first reaches a village (the encounter panel opens).
- * Discovery — including counting a City of Gold — happens on arrival, not on
- * how the meeting goes, and only ever once per village.
+ * Called when the player enters a village (E starts the walk-in scene), before
+ * any parley. Discovery — including counting a City of Gold — happens on
+ * arrival, even if the player leaves or is driven off before reaching the
+ * chief, and only ever once per village.
  */
 export function discoverVillage(s: GameState, v: Village): void {
   if (v.visited) return
@@ -64,4 +77,10 @@ export function resolveAttack(s: GameState, v: Village, roll: Roll = Math.random
   // massacres echo across the whole New World
   s.fear = clamp(s.fear + 10 + Math.floor(v.population / 40), 0, 100)
   v.depleted = true
+}
+
+/** Warriors chase the party out of the village before it reaches the chief. */
+export function applyDrivenOff(state: GameState): void {
+  state.crew = Math.max(0, state.crew - 2)
+  state.morale = Math.max(0, state.morale - 5)
 }

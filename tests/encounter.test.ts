@@ -1,5 +1,15 @@
 import { makeState } from '../src/game/state'
-import { discoverVillage, resolveTrade, resolveGift, resolveAttack, effectiveTemperament } from '../src/game/encounter'
+import {
+  discoverVillage,
+  resolveTrade,
+  resolveGift,
+  resolveAttack,
+  effectiveTemperament,
+  moodOf,
+  applyDrivenOff,
+  HOSTILE_BELOW,
+  FRIENDLY_ABOVE,
+} from '../src/game/encounter'
 import type { Village } from '../src/world/villages'
 
 function village(over: Partial<Village> = {}): Village {
@@ -36,10 +46,14 @@ test('discovering a golden city counts it exactly once', () => {
 })
 
 test('friendly trade gains gold and food, consumes goods, depletes village', () => {
-  const s = makeState({ goods: 100 })
+  const s = makeState({ goods: 100, morale: 50 })
+  const food0 = s.food
+  const m0 = s.morale
   const v = village({ temperament: 0.9, wealth: 200 })
   resolveTrade(s, v, () => 0.5)
   expect(s.gold).toBeGreaterThan(0)
+  expect(s.food).toBeGreaterThan(food0)
+  expect(s.morale).toBeGreaterThan(m0)
   expect(s.goods).toBeLessThan(100)
   expect(v.depleted).toBe(true)
 })
@@ -82,11 +96,14 @@ test('gift with no goods does nothing', () => {
 })
 
 test('attack needs no goods, can cost crew, seizes all gold', () => {
-  const s = makeState({ goods: 0 })
+  const s = makeState({ goods: 0, morale: 50 })
+  const fear0 = s.fear
   const v = village({ temperament: 0.05, population: 300, wealth: 300 })
   resolveAttack(s, v, () => 0.99)
   expect(s.crew).toBeLessThan(100)
   expect(s.gold).toBe(300)
+  expect(s.morale).toBeLessThan(50)
+  expect(s.fear).toBeGreaterThan(fear0)
   expect(v.depleted).toBe(true)
 })
 
@@ -122,4 +139,26 @@ test('depleted village cannot be re-traded or re-attacked', () => {
   resolveTrade(s, v, () => 0.5)
   resolveAttack(s, v, () => 0.5)
   expect(s.gold).toBe(0)
+})
+
+test('moodOf splits hostile / wary / friendly at the shared cutoffs', () => {
+  expect(HOSTILE_BELOW).toBe(0.3)
+  expect(FRIENDLY_ABOVE).toBe(0.66)
+  expect(moodOf(0.29)).toBe('hostile')
+  expect(moodOf(0.3)).toBe('wary')
+  expect(moodOf(0.66)).toBe('wary')
+  expect(moodOf(0.67)).toBe('friendly')
+  expect(moodOf(0)).toBe('hostile')
+  expect(moodOf(1)).toBe('friendly')
+})
+
+test('being driven off costs men and heart, floored at zero', () => {
+  const s = makeState({ crew: 20, morale: 50 })
+  applyDrivenOff(s)
+  expect(s.crew).toBe(18)
+  expect(s.morale).toBe(45)
+  const low = makeState({ crew: 1, morale: 3 })
+  applyDrivenOff(low)
+  expect(low.crew).toBe(0)
+  expect(low.morale).toBe(0)
 })

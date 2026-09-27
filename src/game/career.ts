@@ -3,6 +3,8 @@
  * buys bigger outfitting budgets. The New World persists between voyages —
  * returning to Spain is how an expedition resupplies its trade goods.
  */
+import { BUDGET } from './outfit'
+
 export interface Career {
   banked: number
   voyages: number
@@ -31,9 +33,9 @@ export function rankTitle(banked: number): string {
   return RANKS[rankIndex(banked)].title
 }
 
-/** The Crown funds proven men: base 500, +200 per rank earned. */
+/** The Crown funds proven men: the BUDGET base, +200 per rank earned. */
 export function budgetFor(banked: number): number {
-  return 500 + rankIndex(banked) * 200
+  return BUDGET + rankIndex(banked) * 200
 }
 
 export function bankGold(c: Career, gold: number): Career {

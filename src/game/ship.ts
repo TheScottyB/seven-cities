@@ -1,11 +1,7 @@
 import type { GameMap } from '../world/mapgen'
 import { TILE, isWalkable } from '../world/tiles'
+import { nearestOceanRing, MOORING_RADIUS } from '../world/villages'
 import { Facing, updateMover, type PartialMover } from './explorer'
-
-// Facing/Mover live in explorer.ts and are re-exported here so there is exactly
-// ONE definition — two copies would drift the moment either one is edited.
-export { Facing, updateMover, GAIT_CYCLE, GAIT_RATE } from './explorer'
-export type { Mover, PartialMover, FacingValue } from './explorer'
 
 /**
  * The sprite fields are OPTIONAL on a ship. Saves persist bare {x, y} and the
@@ -32,20 +28,20 @@ export function findMooring(map: GameMap): Ship {
   return findMoorings(map, 1)[0]
 }
 
-/** Anchorage for a fleet: the n ocean tiles nearest the landing beach. */
+/**
+ * Anchorage for a fleet: the n ocean tiles nearest the landing beach, in the
+ * same ring order reachableAmphibious uses, so the first is the home sea's seed.
+ */
 export function findMoorings(map: GameMap, n: number): Ship[] {
   const { landing } = map
   const moorings: Ship[] = []
-  for (let r = 1; r < 12 && moorings.length < n; r++) {
-    for (let dy = -r; dy <= r && moorings.length < n; dy++) {
-      for (let dx = -r; dx <= r && moorings.length < n; dx++) {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue // ring only
-        const x = landing.x + dx
-        const y = landing.y + dy
-        if (isOcean(map, x, y)) moorings.push({ x: x + 0.5, y: y + 0.5, facing: Facing.E, gait: 0, moving: false })
-      }
-    }
-  }
+  if (n > 0)
+    nearestOceanRing(map, landing.x, landing.y, MOORING_RADIUS, (i) => {
+      const x = i % map.width
+      const y = (i / map.width) | 0
+      moorings.push({ x: x + 0.5, y: y + 0.5, facing: Facing.E, gait: 0, moving: false })
+      return moorings.length < n
+    })
   // no ocean near the landing would mean a landlocked landing — mapgen prevents it
   while (moorings.length < n)
     moorings.push({ x: landing.x + 0.5, y: landing.y + 0.5, facing: Facing.E, gait: 0, moving: false })

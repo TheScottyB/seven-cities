@@ -17,9 +17,21 @@ export const OUTPOST_CREW = 3
 export const OUTPOST_MAX_STOCK = 250
 export const OUTPOST_REGEN = 2 // provisions gathered per game-second
 export const OUTPOST_MIN_SPACING = 12
+/** the garrison stays behind, and at least two men must march on */
+export const OUTPOST_MIN_CREW = OUTPOST_CREW + 2
 
 export function canFound(state: GameState): boolean {
-  return state.gold >= OUTPOST_COST && state.crew >= OUTPOST_CREW + 2
+  return state.gold >= OUTPOST_COST && state.crew >= OUTPOST_MIN_CREW
+}
+
+/** Outposts are not founded on a village's doorstep; exactly `radius` away is allowed. */
+export function tooCloseToVillage(
+  villages: readonly { x: number; y: number }[],
+  x: number,
+  y: number,
+  radius = 4,
+): boolean {
+  return villages.some((v) => Math.hypot(v.x - x, v.y - y) < radius)
 }
 
 /** Returns the new outpost, or null if unaffordable / too close to another. */

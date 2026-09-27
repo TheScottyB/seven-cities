@@ -1,7 +1,8 @@
 /**
  * Turns score data into sound. Like the cue synthesizer, everything here
- * takes any BaseAudioContext so tests can render whole passages of the
- * score onto an OfflineAudioContext and assert on the signal.
+ * takes any BaseAudioContext: the dev hook __dbg.renderTheme renders passages
+ * onto an OfflineAudioContext, and tests/music.test.ts checks the scheduler
+ * against a stub context.
  */
 import type { ScoreNote, Theme } from './score'
 

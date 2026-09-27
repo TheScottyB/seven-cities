@@ -1,8 +1,9 @@
 /**
- * Outfitting in Spain: before sailing, the Crown grants a fixed budget which
- * the player splits between food (rations), trade goods (needed to trade and
- * gift in the New World), and crew. Whatever is left over sails with you as
- * starting gold.
+ * Outfitting in Spain: before sailing, the Crown grants a budget (BUDGET base,
+ * more with each rank; see budgetFor in career.ts) which the player splits
+ * between food (rations), trade goods (needed to trade and gift in the New
+ * World), crew, and ships (at least one caravel). Whatever is left over sails
+ * with you as starting gold.
  */
 export interface Outfit {
   food: number
@@ -11,6 +12,7 @@ export interface Outfit {
   ships: number
 }
 
+/** the base grant, before rank; budgetFor adds to it */
 export const BUDGET = 500
 
 /** gold per unit */

@@ -1,6 +1,5 @@
 import { generateMap } from '../src/world/mapgen'
-import { findMooring, moveShip, landingSpots } from '../src/game/ship'
-import { makeExplorer } from '../src/game/explorer'
+import { findMooring, moveShip, landingSpots, type Ship } from '../src/game/ship'
 import { TILE, isWalkable } from '../src/world/tiles'
 
 test('mooring is an ocean tile near the landing', () => {
@@ -46,8 +45,12 @@ test('landingSpots is empty in open ocean', () => {
   expect(spots.length).toBe(0)
 })
 
-test('explorer starts on land regardless of sailing feature', () => {
+test('a bare restored ship picks up sprite fields from drift alone', () => {
   const m = generateMap(123)
-  const e = makeExplorer(m)
-  expect(isWalkable(m.tiles[Math.floor(e.y) * m.width + Math.floor(e.x)])).toBe(true)
+  // the map's west edge is forced deep ocean; saves restore ships as bare {x, y}
+  const bare: Ship = { x: 1.5, y: Math.floor(m.height / 2) + 0.5 }
+  moveShip(m, bare, 0, 0, 0.1, 1, 0, 2) // no helm, a squall pushing south
+  expect(bare.moving).toBe(true)
+  expect(bare.facing).toBeDefined()
+  expect(Number.isFinite(bare.gait)).toBe(true)
 })

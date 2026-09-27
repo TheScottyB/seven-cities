@@ -13,9 +13,14 @@ export interface ChronicleEntry {
 
 export const CHRONICLE_MAX = 8
 
-/** Newest first, capped. */
+/** Newest first, capped; the best-scoring run is kept even when it ages out. */
 export function addEntry(list: ChronicleEntry[], e: ChronicleEntry, max = CHRONICLE_MAX): ChronicleEntry[] {
-  return [e, ...list].slice(0, max)
+  const next = [e, ...list]
+  if (next.length <= max || max < 2) return next.slice(0, max)
+  let top = 0
+  for (let i = 1; i < next.length; i++) if (next[i].score > next[top].score) top = i
+  if (top < max) return next.slice(0, max)
+  return [...next.slice(0, max - 1), next[top]]
 }
 
 export function bestScore(list: ChronicleEntry[]): number | null {

@@ -17,7 +17,10 @@ export interface GameState {
   status: GameStatus
 }
 
-const SECONDS_PER_DAY = 20
+export const SECONDS_PER_DAY = 20
+
+/** provisions at or below this read as running low */
+export const LOW_FOOD = 80
 
 /** provisions a crew of this size eats per game day — the outfitter's arithmetic */
 export function dailyAppetite(crew: number): number {
@@ -48,7 +51,7 @@ export function tick(s: GameState, dt: number): void {
 
   // famine bites: a base camp cost plus a per-man share —
   // ~24 food per day for a 25-man expedition (see dailyAppetite)
-  const eaten = (dt * dailyAppetite(s.crew)) / 20
+  const eaten = (dt * dailyAppetite(s.crew)) / SECONDS_PER_DAY
   s.food = Math.max(0, s.food - eaten)
   if (s.food <= 0) {
     s.crew = Math.max(0, s.crew - dt * 2)
@@ -67,6 +70,24 @@ export function tick(s: GameState, dt: number): void {
   }
 }
 
+export interface ScoreParts {
+  gold: number
+  charted: number
+  villages: number
+  days: number
+}
+
+/** The score broken into whole-number parts; score() is their sum. */
+export function scoreParts(s: GameState, tilesCharted: number): ScoreParts {
+  return {
+    gold: Math.floor(s.gold),
+    charted: Math.floor(tilesCharted * 0.5),
+    villages: s.villagesContacted * 20,
+    days: -s.day * 5,
+  }
+}
+
 export function score(s: GameState, tilesCharted: number): number {
-  return Math.floor(s.gold + tilesCharted * 0.5 + s.villagesContacted * 20 - s.day * 5)
+  const p = scoreParts(s, tilesCharted)
+  return p.gold + p.charted + p.villages + p.days
 }

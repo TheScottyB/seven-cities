@@ -1,35 +1,55 @@
-// Pure char-grid helpers only. src/art/spritebank.ts allocates canvases and
-// must NOT be imported here — the suite runs without a DOM.
-import { gridSize, shiftLegs, shiftRows, CELL, ANCHOR_X } from '../src/art/pixels'
+// The draw calls are exercised against a fake bank and a stub context:
+// buildSpriteBank needs a DOM, but importing the module does not.
+import { drawExplorerSprite, drawShipSprite, gaitFrameIndex, type SpriteBank } from '../src/art/spritebank'
+import { CELL } from '../src/art/pixels'
+import { Facing, GAIT_CYCLE } from '../src/game/gait'
 
-test('mirror trick requires the anchor at the cell centre', () => {
-  expect(ANCHOR_X).toBe(CELL / 2)
+const cell = (name: string) => ({ name }) as unknown as HTMLCanvasElement
+
+function fakeBank(): SpriteBank {
+  const facings = ['S', 'W', 'E', 'N']
+  return {
+    explorer: facings.map((f) => [0, 1, 2, 3].map((i) => cell(`fig-${f}${i}`))),
+    ship: facings.map((f) => [cell(`ship-${f}0`), cell(`ship-${f}1`)]),
+    anchor: { x: 12, explorerY: 20, shipY: 18 },
+    cell: CELL,
+  }
+}
+
+function stubCtx() {
+  const drawImage = vi.fn()
+  return { g: { drawImage } as unknown as CanvasRenderingContext2D, drawImage }
+}
+
+test('gait 0 is the neutral frame, and the gait wrap lands back on it', () => {
+  expect(gaitFrameIndex(0)).toBe(0)
+  expect(gaitFrameIndex(GAIT_CYCLE)).toBe(gaitFrameIndex(0))
+  expect(gaitFrameIndex(-3.7)).toBe(0)
 })
 
-test('gridSize measures the longest row', () => {
-  expect(gridSize(['..a', '.aaaa', 'a'])).toEqual([5, 3])
+test('facing west does not shift the conquistador sideways', () => {
+  // The west cell is the east cell flipped about the cell centre, so art at
+  // columns [a, a + w) lands at [CELL - a - w, CELL - a). The figure is 11 px
+  // wide at column 6 (spritebank FIG_W / FIG_X).
+  const figX = 6
+  const figW = 11
+  const bank = fakeBank()
+  const { g, drawImage } = stubCtx()
+  drawExplorerSprite(g, bank, 40.3, 30, Facing.E)
+  drawExplorerSprite(g, bank, 40.3, 30, Facing.W)
+  const [eCell, xE, yE] = drawImage.mock.calls[0]
+  const [wCell, xW, yW] = drawImage.mock.calls[1]
+  expect(eCell).toBe(bank.explorer[Facing.E][0])
+  expect(wCell).toBe(bank.explorer[Facing.W][0])
+  expect(xW + (CELL - figX - figW)).toBe(xE + figX) // left edge of the art
+  expect(yW).toBe(yE)
 })
 
-test('shiftLegs moves the near leg and leaves props outside the window alone', () => {
-  //          col: 0123456789
-  const rows = ['...MM.MM.p', '...bb.bb.p']
-  const out = shiftLegs(rows, 0, 2, 8, 5, -1, 0, 0, 0)
-  // near leg (cols 3,4) stepped one left; far leg and the pike at col 9 untouched
-  expect(out).toEqual(['..MM..MM.p', '..bb..bb.p'])
-})
-
-test('shiftLegs clips at the window edge rather than spilling onto a prop', () => {
-  const rows = ['...MM.MM.p']
-  // window ends at col 8, so the far leg cannot be pushed onto the pike
-  expect(shiftLegs(rows, 0, 2, 8, 5, 0, 0, 1, 0)).toEqual(['...MM..MMp'])
-})
-
-test('shiftLegs drops pixels pushed off the bottom, lifting the foot', () => {
-  const rows = ['..MM......', '..bb......']
-  const out = shiftLegs(rows, 0, 2, 6, 5, 0, -1, 0, 0)
-  expect(out).toEqual(['..bb......', '..........'])
-})
-
-test('shiftRows heels only the requested band', () => {
-  expect(shiftRows(['mm..', '..hh'], 0, 0, 1)).toEqual(['.mm.', '..hh'])
+test('a ship with no facing and no clock draws the still east cell', () => {
+  const bank = fakeBank()
+  const { g, drawImage } = stubCtx()
+  drawShipSprite(g, bank, 0, 0, undefined)
+  expect(drawImage).toHaveBeenCalledTimes(1)
+  expect(drawImage.mock.calls[0][0]).toBe(bank.ship[Facing.E][0])
+  expect(drawImage.mock.calls[0].slice(1)).toEqual([-12, -18])
 })

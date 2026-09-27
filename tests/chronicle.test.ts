@@ -3,6 +3,7 @@ import {
   bestScore,
   serializeChronicle,
   deserializeChronicle,
+  CHRONICLE_MAX,
   type ChronicleEntry,
 } from '../src/game/chronicle'
 
@@ -19,8 +20,25 @@ test('newest entry goes first', () => {
 test('chronicle is capped', () => {
   let list: ChronicleEntry[] = []
   for (let i = 0; i < 20; i++) list = addEntry(list, entry({ score: i }))
-  expect(list.length).toBe(8)
+  expect(list.length).toBe(CHRONICLE_MAX)
   expect(list[0].score).toBe(19) // newest kept
+})
+
+test('the record run survives any number of lesser voyages', () => {
+  let list = addEntry([], entry({ seedStr: 'best', score: 5000 }))
+  for (let i = 0; i < 10; i++) {
+    list = addEntry(list, entry({ seedStr: `n${i}`, score: i }))
+    expect(list.length).toBeLessThanOrEqual(CHRONICLE_MAX)
+    expect(list[0].seedStr).toBe(`n${i}`) // newest first
+    expect(bestScore(list)).toBe(5000)
+  }
+  expect(list.filter((e) => e.seedStr === 'best').length).toBe(1)
+})
+
+test('a new record needs no special keeping', () => {
+  let list: ChronicleEntry[] = []
+  for (let i = 0; i < 12; i++) list = addEntry(list, entry({ score: i }))
+  expect(list.map((e) => e.score)).toEqual([11, 10, 9, 8, 7, 6, 5, 4])
 })
 
 test('bestScore across entries; null when empty', () => {

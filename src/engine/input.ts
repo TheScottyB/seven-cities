@@ -1,15 +1,39 @@
 export class Input {
   private held = new Set<string>()
   private edge = new Set<string>()
+  private repeat = new Set<string>()
 
   constructor(target: EventTarget = window) {
     target.addEventListener('keydown', (e) => {
-      const k = key(e as KeyboardEvent)
-      if (!this.held.has(k)) this.edge.add(k)
+      const ke = e as KeyboardEvent
+      // Leave browser/OS shortcuts (Ctrl+R, Cmd+W, Alt+Tab) to the browser.
+      if (ke.ctrlKey || ke.metaKey || ke.altKey) return
+      const k = key(ke)
+      if (ke.repeat || this.held.has(k)) this.repeat.add(k)
+      else this.edge.add(k)
       this.held.add(k)
-      if (HANDLED.has(k)) (e as KeyboardEvent).preventDefault()
+      if (HANDLED.has(k)) ke.preventDefault()
     })
-    target.addEventListener('keyup', (e) => this.held.delete(key(e as KeyboardEvent)))
+    target.addEventListener('keyup', (e) => {
+      const ke = e as KeyboardEvent
+      this.held.delete(key(ke))
+      // macOS swallows keyups for keys released while Cmd was down.
+      if (ke.key === 'Meta') this.reset()
+    })
+    // Keyups that land in another window never arrive; drop everything held.
+    target.addEventListener('blur', () => this.reset())
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) this.reset()
+      })
+    }
+  }
+
+  /** Forget all held and pending keys. */
+  reset(): void {
+    this.held.clear()
+    this.edge.clear()
+    this.repeat.clear()
   }
 
   /** Normalized-ish movement axis from WASD / arrow keys. */
@@ -32,34 +56,60 @@ export class Input {
     return false
   }
 
+  /** Like pressed(), but also true for OS auto-repeat while the key is held. */
+  pressedOrRepeat(k: string): boolean {
+    const hit = this.edge.delete(k)
+    return this.repeat.delete(k) || hit
+  }
+
   /** Clear per-frame edge state. Call at the end of each update. */
   endFrame(): void {
     this.edge.clear()
+    this.repeat.clear()
   }
 }
 
 const HANDLED = new Set(['left', 'right', 'up', 'down', 'action', '1', '2', '3', 'esc'])
 
+const PHYSICAL_MOVE: Record<string, string> = {
+  KeyW: 'up',
+  KeyA: 'left',
+  KeyS: 'down',
+  KeyD: 'right',
+}
+
+// Letters whose on-screen labels name the character, not the key position.
+const MNEMONIC = new Set(['f', 'm', 'c', 'r', 'e'])
+
+/**
+ * Map a key event to a logical key. Keydown and keyup must go through here
+ * alike so a press released under a different case/layout still clears.
+ * `code` may be absent (synthetic events), so every branch works from `key`.
+ */
 function key(e: KeyboardEvent): string {
-  switch (e.key) {
+  const raw = e.key ?? ''
+  const k = raw.length === 1 ? raw.toLowerCase() : raw
+  const move = e.code ? PHYSICAL_MOVE[e.code] : undefined
+  if (move && !MNEMONIC.has(k)) return move
+  const foreign = k === 'Process' || k === 'Unidentified' || (k.length === 1 && !/[a-z0-9 ]/.test(k))
+  return logical((foreign && e.code && fromCode(e.code)) || k)
+}
+
+function logical(k: string): string {
+  switch (k) {
     case 'ArrowLeft':
     case 'a':
-    case 'A':
       return 'left'
     case 'ArrowRight':
     case 'd':
-    case 'D':
       return 'right'
     case 'ArrowUp':
     case 'w':
-    case 'W':
       return 'up'
     case 'ArrowDown':
     case 's':
-    case 'S':
       return 'down'
     case 'e':
-    case 'E':
     case ' ':
       return 'action'
     case 'Escape':
@@ -67,6 +117,13 @@ function key(e: KeyboardEvent): string {
     case 'Enter':
       return 'enter'
     default:
-      return e.key
+      return k
   }
+}
+
+/** Layout-independent fallback for IME, non-Latin layouts and shifted digits. */
+function fromCode(code: string): string | undefined {
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase()
+  const digit = /^(?:Digit|Numpad)([0-9])$/.exec(code)
+  return digit ? digit[1] : undefined
 }
