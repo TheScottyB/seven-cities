@@ -152,7 +152,7 @@ export function deserializeSave(json: string): SaveData | null {
     if (!Number.isInteger(d.activeShip) || d.activeShip < 0 || d.activeShip >= d.ships.length) return null
     if (typeof d.sailing !== 'boolean') return null
     if (!Array.isArray(d.outposts) || !d.outposts.every(isOutpost)) return null
-    if (!d.career || typeof d.career.banked !== 'number' || typeof d.career.voyages !== 'number') return null
+    if (!d.career || !Number.isFinite(d.career.banked) || !Number.isFinite(d.career.voyages)) return null
     if (!Array.isArray(d.villages) || !d.villages.every(isVillageEntry)) return null
     return d as SaveData
   } catch {

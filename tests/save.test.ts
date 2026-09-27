@@ -131,6 +131,12 @@ const mutations: Mutation[] = [
   ['a null outpost', (d) => { d.outposts = [null] }],
 ]
 
+test('rejects banked gold past the float range, which JSON.parse turns into Infinity', () => {
+  const json = JSON.stringify(validSave()).replace('"banked":0', '"banked":1e999')
+  expect(json).toContain('1e999')
+  expect(deserializeSave(json)).toBeNull()
+})
+
 test('populated village and outpost entries still load', () => {
   const d = validSave()
   d.villages = [{ visited: true, depleted: false, temperament: 0.5 }, {}]
