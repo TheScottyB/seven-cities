@@ -8,12 +8,8 @@ export interface GameMap {
   tiles: Uint8Array
   landing: { x: number; y: number }
   seed: number
-  /**
-   * The raw height field the terrain was classified from. Optional because a
-   * Float32Array cannot survive JSON — saves regenerate the map from the seed,
-   * so nothing depends on it round-tripping. The renderer uses it for relief.
-   */
-  elevation?: Float32Array
+  /** Raw height field the terrain was classified from; drives relief shading. */
+  elevation: Float32Array
 }
 
 export function generateMap(seed: number, width = 192, height = 192): GameMap {

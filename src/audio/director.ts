@@ -3,6 +3,8 @@
  * where the game was and where it is now. Produces AudioCue data only — no
  * WebAudio imports — so every audio decision is unit-testable.
  */
+import type { Screen } from '../game/screen'
+
 export type CueId =
   | 'trade'
   | 'gift'
@@ -29,7 +31,7 @@ export interface AudioCue {
 }
 
 export interface AudioSnapshot {
-  screen: string // 'start' | 'outfit' | 'playing' | 'walkin' | 'spain' | 'over'
+  screen: Screen
   sailing: boolean
   inStorm: boolean
   onRiver: boolean

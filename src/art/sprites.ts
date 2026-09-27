@@ -10,25 +10,6 @@ export function drawShadow(g: CanvasRenderingContext2D, cx: number, cy: number, 
   g.restore()
 }
 
-/** The conquistador: a little figure with a helmet and cape. */
-export function drawExplorer(g: CanvasRenderingContext2D, cx: number, cy: number): void {
-  const s = TILE_PX
-  // cape
-  g.fillStyle = '#b1372f'
-  g.fillRect(cx - s * 0.28, cy - s * 0.15, s * 0.56, s * 0.5)
-  // body
-  g.fillStyle = '#c9c9d2'
-  g.fillRect(cx - s * 0.2, cy - s * 0.1, s * 0.4, s * 0.42)
-  // head
-  g.fillStyle = '#e3c1a0'
-  g.beginPath()
-  g.arc(cx, cy - s * 0.24, s * 0.18, 0, Math.PI * 2)
-  g.fill()
-  // helmet
-  g.fillStyle = '#8a8a94'
-  g.fillRect(cx - s * 0.2, cy - s * 0.42, s * 0.4, s * 0.14)
-}
-
 /** A dugout canoe with a paddler — how the expedition travels rivers. */
 export function drawCanoe(g: CanvasRenderingContext2D, cx: number, cy: number): void {
   const s = TILE_PX

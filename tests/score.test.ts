@@ -1,20 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { musicFor, buildTheme, type ThemeId } from '../src/audio/score'
+import type { Screen } from '../src/game/screen'
 
-const snap = (screen: string, won = false, lost = false) => ({ screen, won, lost })
 const pcs = (id: ThemeId) => new Set(buildTheme(id).notes.map((n) => n.midi % 12))
 
 describe('which piece the moment calls for', () => {
   it('the score belongs to the opening title alone', () => {
-    expect(musicFor(snap('start'))).toBe('title')
+    expect(musicFor('start')).toBe('title')
   })
   it('everywhere else, the world speaks for itself', () => {
-    expect(musicFor(snap('outfit'))).toBeNull()
-    expect(musicFor(snap('spain'))).toBeNull()
-    expect(musicFor(snap('playing'))).toBeNull()
-    expect(musicFor(snap('walkin'))).toBeNull()
-    expect(musicFor(snap('over', true))).toBeNull()
-    expect(musicFor(snap('over', false, true))).toBeNull()
+    const others: Screen[] = ['outfit', 'spain', 'playing', 'walkin', 'over']
+    for (const screen of others) expect(musicFor(screen)).toBeNull()
   })
 })
 

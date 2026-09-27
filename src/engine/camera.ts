@@ -7,8 +7,9 @@ export interface Camera {
 
 /**
  * Integer pixel zoom for the world view — chunky tiles that actually fill
- * the window, like the machines this game remembers. Scales with window
- * width so a laptop gets 2x and a big desktop 3-4x.
+ * the window, like the machines this game remembers. viewW is in CSS px
+ * (window.innerWidth); floor(viewW / 420) is clamped to 2-4, so windows under
+ * ~1260px get 2x, 1260-1679px (most laptops) get 3x, and 1680px+ gets 4x.
  */
 export function zoomFor(viewW: number): number {
   return Math.max(2, Math.min(4, Math.floor(viewW / 420)))
@@ -29,18 +30,6 @@ export function centerCamera(
   const halfH = viewH / 2 / (TILE_PX * zoom)
   cam.x = clamp(worldX, halfW, mapW - halfW)
   cam.y = clamp(worldY, halfH, mapH - halfH)
-}
-
-/**
- * World tile coords -> screen pixels. viewW/viewH are the LOGICAL view size:
- * when the renderer scales the context by the zoom factor, pass the canvas
- * size divided by that zoom.
- */
-export function worldToScreen(cam: Camera, viewW: number, viewH: number, wx: number, wy: number) {
-  return {
-    sx: (wx - cam.x) * TILE_PX + viewW / 2,
-    sy: (wy - cam.y) * TILE_PX + viewH / 2,
-  }
 }
 
 function clamp(v: number, lo: number, hi: number) {

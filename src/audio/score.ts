@@ -4,7 +4,9 @@
  * which theme, what mode each piece is in, that every note lands inside its
  * loop. The music player (music.ts) turns these into sound.
  */
-export type ThemeId = 'title' | 'spain' | 'victory' | 'lament'
+import type { Screen } from '../game/screen'
+
+export type ThemeId ='title' | 'spain' | 'victory' | 'lament'
 export type Voice = 'pluck' | 'bass' | 'flute' | 'bell'
 
 export interface ScoreNote {
@@ -31,8 +33,8 @@ export interface Theme {
  * itself: creaking timber and gulls at sea, the living drone ashore. The
  * other pieces remain in the songbook (renderable via the dev hooks).
  */
-export function musicFor(s: { screen: string; won: boolean; lost: boolean }): ThemeId | null {
-  return s.screen === 'start' ? 'title' : null
+export function musicFor(screen: Screen): ThemeId | null {
+  return screen === 'start' ? 'title' : null
 }
 
 const N = (t: number, dur: number, midi: number, gain: number, voice: Voice): ScoreNote => ({ t, dur, midi, gain, voice })

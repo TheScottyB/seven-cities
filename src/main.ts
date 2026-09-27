@@ -1,3 +1,18 @@
+/**
+ * The app shell: owns the canvas, input, audio player and the one mutable
+ * World, and wires the pure rules (src/game, src/world) to the renderer.
+ *
+ * Screen state machine:
+ *   start -> outfit -> playing <-> walkin
+ *   playing -> spain -> outfit (the next voyage, same New World)
+ *   playing -> over -> outfit (a fresh world)
+ *   Esc from playing saves and returns to start; Continue resumes the save.
+ *
+ * Persistence is localStorage only: SAVE_KEY holds the running expedition,
+ * CHRONICLE_KEY the record of finished ones.
+ *
+ * The window.__dbg hook at the bottom exists in DEV builds only.
+ */
 import { generateMap } from './world/mapgen'
 import { placeVillages, nearestUnvisitedGolden, type Village } from './world/villages'
 import { makeFog, reveal } from './world/fog'
@@ -37,6 +52,8 @@ import { buildSpriteBank } from './art/spritebank'
 import { drawHud, drawWindIndicator } from './ui/hud'
 import { drawStartScreen, drawOutfitScreen, drawSpainScreen, drawEncounter, drawGameOver, drawResult } from './ui/panels'
 import { seedFromString } from './world/rng'
+import { TILE } from './world/tiles'
+import type { Screen } from './game/screen'
 
 const REVEAL_RADIUS = 7
 const BOARD_DIST = 2.0
@@ -46,8 +63,6 @@ const RUMOR_RADIUS = 4
 const AUTOSAVE_EVERY = 5 // seconds
 const SAVE_KEY = 'seven-cities-save'
 const CHRONICLE_KEY = 'seven-cities-chronicle'
-
-type Screen = 'start' | 'outfit' | 'playing' | 'walkin' | 'spain' | 'over'
 
 const canvas = document.getElementById('game') as HTMLCanvasElement
 const ctx = canvas.getContext('2d')!
@@ -73,6 +88,8 @@ interface World {
   outposts: Outpost[]
   weather: Weather
   cam: Camera
+  /** renderer precomputation; non-enumerable so World serializes as before */
+  readonly art: WorldArt
 }
 
 const tileset = buildTileset()
@@ -80,7 +97,6 @@ const tileset = buildTileset()
 const edgeSet = buildEdges()
 const deckleSet = buildDeckles()
 const spriteBank = buildSpriteBank()
-let worldArt: WorldArt
 
 /** Everything the renderer needs precomputed for a freshly generated world. */
 function buildWorldArt(map: ReturnType<typeof generateMap>): WorldArt {
@@ -134,16 +150,18 @@ canvas.addEventListener('mousemove', (e) => {
   canvas.style.cursor = id ? 'pointer' : 'default'
 })
 
+/** Is the explorer (or the ship under him) inside a storm right now? */
+const stormHere = () =>
+  stormAt(world.weather, world.state.elapsed, world.map.width, world.map.height, world.explorer.x, world.explorer.y)
+
 function snapshot(): AudioSnapshot {
   const underfoot =
     world.map.tiles[Math.floor(world.explorer.y) * world.map.width + Math.floor(world.explorer.x)]
   return {
     screen,
     sailing: world.sailing,
-    inStorm:
-      world.sailing &&
-      stormAt(world.weather, world.state.elapsed, world.map.width, world.map.height, world.explorer.x, world.explorer.y),
-    onRiver: !world.sailing && underfoot === 8,
+    inStorm: world.sailing && stormHere(),
+    onRiver: !world.sailing && underfoot === TILE.RIVER,
     lowFood: world.state.food < 80 && world.state.status === GameStatus.Playing,
     citiesFound: world.state.citiesFound,
     won: world.state.status === GameStatus.Won,
@@ -157,7 +175,7 @@ function nearestLandDist(maxR = 14): number {
   const ex = Math.floor(explorer.x)
   const ey = Math.floor(explorer.y)
   const land = (x: number, y: number) =>
-    x >= 0 && y >= 0 && x < map.width && y < map.height && map.tiles[y * map.width + x] !== 0
+    x >= 0 && y >= 0 && x < map.width && y < map.height && map.tiles[y * map.width + x] !== TILE.OCEAN
   if (land(ex, ey)) return 0
   for (let r = 1; r <= maxR; r++) {
     for (let dx = -r; dx <= r; dx++) if (land(ex + dx, ey - r) || land(ex + dx, ey + r)) return r
@@ -184,9 +202,7 @@ function sceneInput(): SceneInput {
   return {
     screen,
     sailing: world.sailing,
-    inStorm:
-      world.sailing &&
-      stormAt(world.weather, s.elapsed, world.map.width, world.map.height, world.explorer.x, world.explorer.y),
+    inStorm: world.sailing && stormHere(),
     wind: wind.strength,
     distToLand: world.sailing ? nearestLandDist() : 0,
     hostility: Math.max(0, Math.min(1, hostility)),
@@ -198,7 +214,7 @@ function pumpAudio(): void {
   const snap = snapshot()
   if (prevSnap) player.play(direct(prevSnap, snap, audioEvents))
   else player.play([{ id: ambienceFor(snap) }])
-  player.setTheme(musicFor(snap))
+  player.setTheme(musicFor(snap.screen))
   player.setScene(sceneControls(sceneInput()))
   prevSnap = snap
   audioEvents = []
@@ -211,13 +227,14 @@ function newWorld(seedStr: string): World {
   const fog = makeFog(map.width, map.height)
   const explorer = makeExplorer(map)
   reveal(fog, Math.floor(explorer.x), Math.floor(explorer.y), REVEAL_RADIUS)
-  worldArt = buildWorldArt(map)
-  return {
+  const w: Omit<World, 'art'> = {
     seedStr, map, villages, fog, state: makeState(), explorer,
     ships: findMoorings(map, 1), activeShip: 0, sailing: false,
     outposts: [], weather: makeWeather(seed, map),
     cam: { x: explorer.x, y: explorer.y },
   }
+  // non-enumerable: __dbg.world() and any serializer see the same payload as before
+  return Object.defineProperty(w, 'art', { value: buildWorldArt(map), enumerable: false }) as World
 }
 
 function embark() {
@@ -231,8 +248,6 @@ function embarkVoyage() {
   const { map } = world
   world.explorer.x = map.landing.x + 0.5
   world.explorer.y = map.landing.y + 0.5
-  world.ships = findMoorings(map, outfit.ships)
-  world.activeShip = 0
   world.sailing = false
   world.state.morale = 100 // a fresh crew signs on
   applyOutfit()
@@ -503,7 +518,7 @@ function update(dt: number) {
     if (world.sailing) {
       // while sailing, the explorer IS the ship — and the sky has opinions
       const wind = windAt(world.weather, state.elapsed)
-      const inStorm = stormAt(world.weather, state.elapsed, map.width, map.height, explorer.x, explorer.y)
+      const inStorm = stormHere() // sampled at the pre-move position
       let mul = windFactor(wind.angle, wind.strength, dx, dy)
       let drX = 0
       let drY = 0
@@ -683,15 +698,15 @@ function render() {
     return
   }
 
-  renderWorld(rc, world.cam, world.map, world.fog, world.villages, world.explorer, world.ships, world.activeShip, world.sailing, world.outposts, worldArt)
+  renderWorld(rc, world.cam, world.map, world.fog, world.villages, world.explorer, world.ships, world.activeShip, world.sailing, world.outposts, world.art)
   renderStorms(rc, world.cam, world.weather, world.state.elapsed, world.map, world.fog)
   const hudH = drawHud(ctx, canvas.width, world.state, career.banked)
-  renderMinimap(rc, world.map, world.fog, world.explorer, world.villages, world.ships, world.outposts, hudH + 12, world.cam, worldArt.relief)
+  renderMinimap(rc, world.map, world.fog, world.explorer, world.villages, world.ships, world.outposts, hudH + 12, world.cam, world.art.relief)
   if (world.sailing) {
     const wind = windAt(world.weather, world.state.elapsed)
     drawWindIndicator(ctx, canvas.width, wind.angle, wind.strength, hudH + 12)
     // storm vignette: the sky presses down while you ride one out
-    if (stormAt(world.weather, world.state.elapsed, world.map.width, world.map.height, world.explorer.x, world.explorer.y)) {
+    if (stormHere()) {
       const g = ctx.createRadialGradient(
         canvas.width / 2, canvas.height / 2, Math.min(canvas.width, canvas.height) * 0.3,
         canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) * 0.7,
@@ -769,25 +784,25 @@ function render() {
   }
 }
 
-// Dev-only inspection hook (stripped from production builds) for manual testing.
+// window.__dbg: the automated playthrough bots drive and inspect the game through
+// this hook. It is a STABLE API: add entries, never rename or remove one, and keep
+// every signature and behaviour. DEV builds only; production strips it.
 if (import.meta.env.DEV) {
   ;(window as unknown as { __dbg: unknown }).__dbg = {
-    world: () => world,
-    screen: () => screen,
-    encounter: () => encounter,
-    setTimeScale: (s: number) => {
+    world: () => world, // the live World object (art is non-enumerable)
+    screen: () => screen, // current Screen name
+    encounter: () => encounter, // village whose encounter panel is open, or null
+    setTimeScale: (s: number) => { // multiplies simulated time per update
       timeScale = s
     },
-    // hand-crank the simulation: run N fixed 60Hz updates synchronously,
-    // independent of requestAnimationFrame (which throttles in hidden tabs)
-    step: (frames = 1) => {
+    step: (frames = 1) => { // N synchronous 60Hz update()s, then one render(); ignores rAF throttling
       for (let i = 0; i < frames; i++) update(1 / 60)
       render() // keep the canvas current even when rAF is throttled
     },
-    walkin: () => walkin,
-    career: () => career,
-    audioLog: () => player.getLog(),
-    renderCue: async (id: string) => {
+    walkin: () => walkin, // the active walk-in scene, or null
+    career: () => career, // banked gold and voyage count
+    audioLog: () => player.getLog(), // copy of the capped cue/music log: { id, at }[]
+    renderCue: async (id: string) => { // offline-render a cue: rms plus Goertzel energies
       const off = new OfflineAudioContext(1, 2 * 44100, 44100)
       synthesize(off, off.destination, id as never, 0)
       const buf = await off.startRendering()
@@ -809,14 +824,12 @@ if (import.meta.env.DEV) {
       }
       return { rms, e660: goertzel(660), e880: goertzel(880), e120: goertzel(120), e3000: goertzel(3000) }
     },
-    // the living soundscape's inputs, controls, and firing counts
-    audioScene: () => ({
+    audioScene: () => ({ // soundscape inputs, derived controls and texture firing counts
       input: sceneInput(),
       controls: sceneControls(sceneInput()),
       stats: player.getTextureStats(),
     }),
-    // render one ambient texture offline and measure it
-    renderTexture: async (kind: string, seconds = 3) => {
+    renderTexture: async (kind: string, seconds = 3) => { // offline-render a texture: { rms, peak }
       const off = new OfflineAudioContext(1, Math.floor(seconds * 44100), 44100)
       synthTexture(off, off.destination, kind as TextureKind, 0.1, { midi: 57, dur: 1.6 })
       const buf = await off.startRendering()
@@ -829,8 +842,7 @@ if (import.meta.env.DEV) {
       }
       return { rms: Math.sqrt(sum / d.length), peak }
     },
-    // render the opening seconds of a score theme offline and measure it
-    renderTheme: async (id: string, seconds = 4) => {
+    renderTheme: async (id: string, seconds = 4) => { // offline-render a theme's opening: { rms, peak }
       const off = new OfflineAudioContext(1, Math.floor(seconds * 44100), 44100)
       scheduleThemeWindow(off, off.destination, buildTheme(id as ThemeId), 0, 0, seconds)
       const buf = await off.startRendering()
@@ -843,12 +855,12 @@ if (import.meta.env.DEV) {
       }
       return { rms: Math.sqrt(sum / d.length), peak }
     },
-    setSeed: (s: string) => {
+    setSeed: (s: string) => { // fresh world from seed s, back on the title ready for Enter
       world = newWorld(s)
       encounter = null
       screen = 'start'
     },
-    teleportToVillage: (i = 0) => {
+    teleportToVillage: (i = 0) => { // move explorer onto the i-th undepleted village; returns it
       const v = world.villages.filter((x) => !x.depleted)[i]
       if (v) {
         world.explorer.x = v.x + 0.5

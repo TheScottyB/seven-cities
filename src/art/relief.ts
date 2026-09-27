@@ -123,14 +123,6 @@ export function buildHillshade(map: GameMap): Uint8Array {
   const n = w * h
   const out = new Uint8Array(n)
   const e = map.elevation
-  const mid = 1
-  if (!e) {
-    for (let i = 0; i < n; i++) {
-      const t = tiles[i]
-      out[i] = t === TILE.HIGHLAND || t === TILE.MOUNTAIN ? mid : 0
-    }
-    return out
-  }
   // Blur before differencing. The noise runs four octaves up to frequency 8
   // over a grid of 12, so its top octave has roughly a 1.5-tile period — a raw
   // central difference would alias that into speckle instead of slope.
@@ -184,7 +176,7 @@ export function buildDecorMap(map: GameMap): Uint8Array {
     const y = (i / w) | 0
     const hash = ((x * 73856093) ^ (y * 19349663) ^ 0x5bf03635) >>> 0
     // lush at the shoreline, bare by the time the ground reaches highland
-    const lush = e ? Math.max(0, Math.min(1, 1 - (e[i] - 0.34) / 0.34)) : 0.6
+    const lush = Math.max(0, Math.min(1, 1 - (e[i] - 0.34) / 0.34))
     const roll = (hash % 1000) / 1000
     out[i] = roll < 0.3 + lush * 0.45 ? 1 + ((hash >>> 10) % (count - 1)) : 0
   }

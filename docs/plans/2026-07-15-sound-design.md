@@ -1,6 +1,6 @@
 # Sound Design & Agent-Testability Plan
 
-**Status:** Design — not yet implemented.
+**Status:** Implemented (July 2026). This is the original design snapshot; src/audio/* is authoritative. Cue IDs differ from this draft (storm-howl -> storm-enter, trade-chime -> trade; see CueId in src/audio/director.ts). Composed music ended up title-screen-only (see musicFor in src/audio/score.ts).
 
 ## Direction
 
@@ -60,6 +60,9 @@ Three layers, weakest to strongest:
    note frequencies; the storm howl is broadband noise). This proves the synthesis graphs
    produce the intended *signal*, not just that code ran. It runs headless in the existing
    Playwright harness via `page.evaluate`.
+   *(Note: no Playwright harness exists in this repo. Spectral checks are done by an
+   external harness through the dev-only `window.__dbg` hooks `renderCue`, `renderTheme`
+   and `renderTexture`.)*
 
 What agents genuinely cannot judge is *aesthetics* — whether the chime is pleasant. The
 mitigation is the same as for the art: keep synthesis parameters as named constants,

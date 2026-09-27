@@ -7,7 +7,7 @@
  * the exact vocabulary 8-bit artists used to blend two colours out of a fixed
  * palette, so it belongs here in a way a soft alpha gradient never would.
  *
- * All 144 overlays are baked once at boot; the draw loop does at most one
+ * At most 90 overlays (6 terrains x 15 masks) are baked once at boot; the draw loop does at most one
  * extra drawImage on the ~30% of tiles that sit on a border.
  */
 import { TILE, tileInfo } from '../world/tiles'
@@ -39,10 +39,6 @@ const RANK: Record<number, number> = {
 
 /** The terrains that take part in blending, in rank order. */
 export const BLENDABLE = Object.keys(RANK).map(Number)
-
-export function blends(t: number): boolean {
-  return RANK[t] !== undefined
-}
 
 /** 4x4 ordered dither: classic, and it tiles seamlessly across tile borders. */
 const BAYER = [
@@ -142,12 +138,10 @@ export function buildEdgeKeys(tiles: Uint8Array, w: number, h: number): Uint16Ar
         if (o < 0) continue
         const r = RANK[o]
         if (r === undefined || r <= bestRank) continue
-        if (o !== best) {
-          // a new, higher-ranked contender takes over the whole fringe
-          best = o
-          bestRank = r
-          mask = 1 << k
-        }
+        // a new, higher-ranked contender takes over the whole fringe
+        best = o
+        bestRank = r
+        mask = 1 << k
       }
       if (best < 0) continue
       // collect every side that same terrain touches

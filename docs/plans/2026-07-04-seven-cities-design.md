@@ -1,7 +1,7 @@
 # Seven Cities of Gold — Modern Clone: Design
 
 **Date:** 2026-07-04
-**Status:** Approved
+**Status:** Historical — pre-implementation design (July 2026). The shipped game differs (map size, village count, starting supplies, scope: outfitting, Crown ranks, multiple voyages and sailing all shipped); README.md and the code are authoritative.
 
 ## Vision
 

@@ -25,6 +25,7 @@ export function reveal(fog: Fog, cx: number, cy: number, radius: number): void {
   }
 }
 
+/** Unchecked lookup: the caller must keep (x, y) inside the fog's bounds. */
 export function isSeen(fog: Fog, x: number, y: number): boolean {
   return fog.seen[y * fog.width + x] === 1
 }

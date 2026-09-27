@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { sceneControls, type SceneInput } from '../src/audio/scene'
+import type { Screen } from '../src/game/screen'
 
 const base: SceneInput = {
   screen: 'playing',
@@ -77,7 +78,8 @@ describe('the land drone leans into danger', () => {
   })
 
   it('menus and the title are silent country', () => {
-    for (const screen of ['start', 'outfit', 'spain', 'over']) {
+    const menus: Screen[] = ['start', 'outfit', 'spain', 'over']
+    for (const screen of menus) {
       const c = at({ screen, hostility: 1, famine: 1 })
       expect(c.padNotesPerMin).toBe(0)
       expect(c.creaksPerMin).toBe(0)

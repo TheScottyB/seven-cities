@@ -1,6 +1,6 @@
 # Seven Cities of Gold Clone — Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> Historical build plan (July 2026). Superseded: the code is authoritative (e.g. the map is 192x192 and starting food differs from this plan).
 
 **Goal:** Build a browser-based, real-time exploration clone of *The Seven Cities of Gold* — procedural fog-of-war map, village encounters (trade/gift/attack), resource management, win by finding 7 golden cities.
 
@@ -12,7 +12,7 @@
 
 ## Conventions for the implementing engineer
 
-- **TDD always:** write the failing test, watch it fail, write minimal code, watch it pass, commit. Use `superpowers:test-driven-development`.
+- **TDD always:** write the failing test, watch it fail, write minimal code, watch it pass, commit.
 - **Run tests with:** `npx vitest run <path>` (single file) or `npx vitest run` (all).
 - **Commit after every green step.** Small commits.
 - All pure logic lives under `src/world/` and `src/game/` and must have **zero imports from `engine/`, `ui/`, `art/`, or the DOM** — this is what keeps it testable.
@@ -28,7 +28,7 @@
 
 **Step 1:** Initialize npm project and install deps.
 ```bash
-cd /Users/scottybe/workspace/seven-cities
+cd seven-cities
 npm init -y
 npm install -D typescript vite vitest
 ```

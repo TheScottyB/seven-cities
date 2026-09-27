@@ -4,8 +4,10 @@
  * when the gulls start, how dark and urgent the land drone grows. No
  * WebAudio here; the texture player consults these numbers.
  */
+import type { Screen } from '../game/screen'
+
 export interface SceneInput {
-  screen: string
+  screen: Screen
   sailing: boolean
   inStorm: boolean
   /** wind strength 0..1 */

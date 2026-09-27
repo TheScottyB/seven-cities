@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { generateMap } from '../src/world/mapgen'
 import { TILE } from '../src/world/tiles'
+import { DEPTH_RAMP } from '../src/art/tileset'
 import {
   buildDepthBands,
   buildHillshade,
@@ -50,6 +51,10 @@ describe('the sea reads its own depth', () => {
   it('depth never exceeds the band count', () => {
     for (let i = 0; i < band.length; i++) expect(band[i]).toBeLessThan(SHADES[TILE.OCEAN])
   })
+
+  it('has one ramp colour per depth band', () => {
+    expect(DEPTH_RAMP.length).toBe(SHADES[TILE.OCEAN])
+  })
 })
 
 describe('relief on the cordillera', () => {
@@ -62,6 +67,11 @@ describe('relief on the cordillera', () => {
     }
   })
 
+  it('gives the uplands at least one shade slot', () => {
+    expect(SHADES[TILE.HIGHLAND]).toBeGreaterThanOrEqual(1)
+    expect(SHADES[TILE.MOUNTAIN]).toBeGreaterThanOrEqual(1)
+  })
+
   it('finds both lit and shadowed slopes', () => {
     const hill = buildHillshade(map)
     const seen = new Set<number>()
@@ -72,11 +82,6 @@ describe('relief on the cordillera', () => {
     expect(seen.size).toBeGreaterThan(1)
   })
 
-  it('survives a map with no elevation field', () => {
-    const bare = { ...map, elevation: undefined }
-    const hill = buildHillshade(bare)
-    expect(hill.length).toBe(map.tiles.length)
-  })
 })
 
 describe('ground dressing', () => {

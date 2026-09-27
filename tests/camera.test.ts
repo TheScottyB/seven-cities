@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { zoomFor, centerCamera, worldToScreen, type Camera } from '../src/engine/camera'
+import { zoomFor, centerCamera, type Camera } from '../src/engine/camera'
+import { originFor } from '../src/engine/renderer'
 
 describe('world zoom', () => {
   it('scales with window width, clamped to a chunky-but-sane range', () => {
@@ -21,10 +22,11 @@ describe('world zoom', () => {
     expect(cam.y).toBe(6.25)
   })
 
-  it('worldToScreen maps the camera centre to the middle of the logical view', () => {
-    const cam: Camera = { x: 10, y: 10 }
-    const p = worldToScreen(cam, 800, 400, 10, 10)
-    expect(p.sx).toBe(400)
-    expect(p.sy).toBe(200)
+})
+
+describe('screen origin', () => {
+  it('snaps a fractional camera on an odd-sized view to whole pixels', () => {
+    // 400.5 - 165.92 = 234.58 and 200.5 - 78.56 = 121.94 before snapping
+    expect(originFor({ x: 10.37, y: 4.91 }, 801, 401)).toEqual({ ox: 235, oy: 122 })
   })
 })

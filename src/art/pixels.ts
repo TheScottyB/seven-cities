@@ -17,7 +17,7 @@ export const ANCHOR_X = CELL / 2
  * Outline colour. Deliberately NOT pure black: against the dark-navy ocean a
  * #000 contour reads as a hole punched in the water rather than as ink.
  */
-export const OUTLINE = '#160f09'
+const OUTLINE = '#160f09'
 
 // ---------------------------------------------------------------------------
 // pure char-grid helpers (no DOM — unit-testable)
@@ -34,12 +34,6 @@ export function gridSize(rows: Grid): [number, number] {
   let w = 0
   for (const r of rows) if (r.length > w) w = r.length
   return [w, rows.length]
-}
-
-/** Mirror a char grid horizontally, padded to the grid's full width. */
-export function mirrorRows(rows: Grid): string[] {
-  const [w] = gridSize(rows)
-  return rows.map((r) => r.padEnd(w, '.').split('').reverse().join(''))
 }
 
 /**
@@ -97,12 +91,16 @@ export function shiftRows(rows: Grid, rowLo: number, rowHi: number, dx: number):
 // canvas primitives (DOM — only ever called from buildSpriteBank())
 // ---------------------------------------------------------------------------
 
-/** A blank, smoothing-disabled cell. */
-export function makeCell(w = CELL, h = CELL): HTMLCanvasElement {
+/**
+ * A blank, smoothing-disabled cell. `readback` marks a scratch canvas that
+ * harden()/outlined() will getImageData from; it only takes effect here, on the
+ * canvas's first getContext call. Leave it off for cells blitted every frame.
+ */
+export function makeCell(w = CELL, h = CELL, readback = false): HTMLCanvasElement {
   const c = document.createElement('canvas')
   c.width = w
   c.height = h
-  const g = c.getContext('2d')!
+  const g = c.getContext('2d', { willReadFrequently: readback })!
   g.imageSmoothingEnabled = false
   return c
 }
@@ -114,7 +112,7 @@ function ctxOf(c: HTMLCanvasElement): CanvasRenderingContext2D {
 }
 
 /** Paint a char grid at (x, y). One character per pixel. */
-export function blit(g: CanvasRenderingContext2D, rows: Grid, pal: Palette, x: number, y: number): void {
+function blit(g: CanvasRenderingContext2D, rows: Grid, pal: Palette, x: number, y: number): void {
   for (let r = 0; r < rows.length; r++) {
     const row = rows[r]
     for (let c = 0; c < row.length; c++) {
@@ -131,7 +129,7 @@ export function blit(g: CanvasRenderingContext2D, rows: Grid, pal: Palette, x: n
  * fully opaque, which turns antialiased curves into true hard-edged pixel art.
  * Expensive — must NEVER run inside a frame.
  */
-export function harden(c: HTMLCanvasElement, threshold = 128): void {
+function harden(c: HTMLCanvasElement, threshold = 128): void {
   const g = ctxOf(c)
   const img = g.getImageData(0, 0, c.width, c.height)
   const d = img.data
@@ -151,7 +149,7 @@ function rgbOf(hex: string): [number, number, number] {
  * 8-bit outlines do. Requires a hardened source: a soft alpha ramp would make
  * the dilation mask fuzzy.
  */
-export function outlined(src: HTMLCanvasElement, color = OUTLINE): HTMLCanvasElement {
+function outlined(src: HTMLCanvasElement, color = OUTLINE): HTMLCanvasElement {
   const w = src.width
   const h = src.height
   const s = ctxOf(src).getImageData(0, 0, w, h).data
@@ -182,7 +180,7 @@ export function outlined(src: HTMLCanvasElement, color = OUTLINE): HTMLCanvasEle
 }
 
 /** THE ONLY PATH INTO THE BANK. Order matters: the dilation mask must be hard. */
-export function finish(c: HTMLCanvasElement): HTMLCanvasElement {
+function finish(c: HTMLCanvasElement): HTMLCanvasElement {
   harden(c)
   return outlined(c)
 }
@@ -205,7 +203,7 @@ export function mirror(src: HTMLCanvasElement): HTMLCanvasElement {
  * so a plain 4x1 bar is used instead.
  */
 export function shadowCell(cx: number, cy: number, radius: number, alpha = 0.3): HTMLCanvasElement {
-  const c = makeCell()
+  const c = makeCell(CELL, CELL, true)
   const g = ctxOf(c)
   g.fillStyle = '#000'
   if (radius < 3) {
@@ -240,7 +238,7 @@ export function bakeCell(art: HTMLCanvasElement, shadow: HTMLCanvasElement | nul
 
 /** Draw a char grid into a fresh cell at (x, y) without any post-processing. */
 export function cellFrom(rows: Grid, pal: Palette, x: number, y: number): HTMLCanvasElement {
-  const c = makeCell()
+  const c = makeCell(CELL, CELL, true)
   blit(ctxOf(c), rows, pal, x, y)
   return c
 }

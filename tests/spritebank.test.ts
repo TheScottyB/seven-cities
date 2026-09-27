@@ -1,6 +1,6 @@
 // Pure char-grid helpers only. src/art/spritebank.ts allocates canvases and
 // must NOT be imported here — the suite runs without a DOM.
-import { gridSize, mirrorRows, shiftLegs, shiftRows, CELL, ANCHOR_X } from '../src/art/pixels'
+import { gridSize, shiftLegs, shiftRows, CELL, ANCHOR_X } from '../src/art/pixels'
 
 test('mirror trick requires the anchor at the cell centre', () => {
   expect(ANCHOR_X).toBe(CELL / 2)
@@ -8,10 +8,6 @@ test('mirror trick requires the anchor at the cell centre', () => {
 
 test('gridSize measures the longest row', () => {
   expect(gridSize(['..a', '.aaaa', 'a'])).toEqual([5, 3])
-})
-
-test('mirrorRows flips and pads to full width', () => {
-  expect(mirrorRows(['ab..', '.c'])).toEqual(['..ba', '..c.'])
 })
 
 test('shiftLegs moves the near leg and leaves props outside the window alone', () => {
