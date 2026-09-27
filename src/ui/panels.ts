@@ -160,6 +160,8 @@ export function drawOutfitScreen(
   outfit: Outfit,
   selectedRow: number,
   budget = BUDGET,
+  /** a fresh expedition will overwrite the single save slot */
+  replacesSave = false,
 ): void {
   ctx.fillStyle = '#0a0a12'
   ctx.fillRect(0, 0, viewW, viewH)
@@ -213,17 +215,23 @@ export function drawOutfitScreen(
   )
   const perDay = dailyAppetite(outfit.crew)
   const days = perDay > 0 ? outfit.food / perDay : 0
+  const short = days < 5
+  // said in words too, not by colour alone; no longer than the normal line
+  const larder = short ? `too little: ~${days.toFixed(1)} days` : `this larder lasts ~${days.toFixed(1)} days`
   center(
     ctx,
-    `A crew of ${outfit.crew} eats ~${Math.round(perDay)} provisions a day — this larder lasts ~${days.toFixed(1)} days`,
+    `${short ? '! ' : ''}A crew of ${outfit.crew} eats ~${Math.round(perDay)} provisions a day — ${larder}`,
     cx,
     y + 34,
     "14px 'Courier New', monospace",
-    days < 5 ? '#c0504d' : '#7a9a7a',
+    short ? '#c0504d' : '#7a9a7a',
   )
   const go = '↑↓ choose   ←→ adjust   ENTER set sail'
   center(ctx, go, cx, y + 62, "15px 'Courier New', monospace", '#7fd17f')
   centerHit(ctx, 'outfit-go', go, cx, y + 62, "15px 'Courier New', monospace")
+  if (replacesSave) {
+    center(ctx, 'Setting sail replaces your saved expedition. Esc to go back.', cx, y + 88, "14px 'Courier New', monospace", '#c9a94f')
+  }
 }
 
 export function drawStartScreen(
@@ -348,10 +356,17 @@ export function drawSpainScreen(
   }
   y += 44
   center(ctx, `The Crown will fund your next voyage: ${budgetFor(career.banked)} gold`, cx, y + 6, "15px 'Courier New', monospace", '#9a9aa6')
+  // what happens to this voyage's stores; breaks at the semicolon on narrow screens
+  const leftoverFont = "13px 'Courier New', monospace"
+  const leftover = ['Leftover stores stay behind;', 'your caravels return to Palos and sail again from the landing.']
+  ctx.font = leftoverFont
+  const leftoverLines = ctx.measureText(leftover.join(' ')).width <= viewW - 96 ? [leftover.join(' ')] : leftover
+  leftoverLines.forEach((l, i) => center(ctx, l, cx, y + 28 + i * 17, leftoverFont, '#8a8a94'))
+  const goY = y + 56 + (leftoverLines.length - 1) * 17
 
   const go = 'Press ENTER to outfit your next voyage'
-  center(ctx, go, cx, y + 40, "16px 'Courier New', monospace", hovered('spain-go') ? '#a8f0a8' : '#7fd17f')
-  centerHit(ctx, 'spain-go', go, cx, y + 40, "16px 'Courier New', monospace")
+  center(ctx, go, cx, goY, "16px 'Courier New', monospace", hovered('spain-go') ? '#a8f0a8' : '#7fd17f')
+  centerHit(ctx, 'spain-go', go, cx, goY, "16px 'Courier New', monospace")
 
   // --- the harbor of Palos, waiting below the court -------------------------
   const hy = viewH - 132 // waterline
@@ -501,7 +516,13 @@ export function drawEncounter(
  * hiding the ship, the storm, or the village it is talking about.
  */
 export function drawResult(ctx: CanvasRenderingContext2D, viewW: number, _viewH: number, text: string, top = 64): void {
-  ctx.font = "16px 'Courier New', monospace"
+  // long notices step the font down to fit the view before anything is clipped
+  let size = 16
+  ctx.font = `${size}px 'Courier New', monospace`
+  while (size > 11 && ctx.measureText(text).width + 48 > viewW - 16) {
+    size--
+    ctx.font = `${size}px 'Courier New', monospace`
+  }
   const w = Math.min(ctx.measureText(text).width + 48, viewW - 16)
   const x = (viewW - w) / 2
   ctx.fillStyle = 'rgba(10,12,22,0.88)'
@@ -512,7 +533,7 @@ export function drawResult(ctx: CanvasRenderingContext2D, viewW: number, _viewH:
   ctx.fillStyle = '#7fd17f'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
-  ctx.fillText(text, viewW / 2, top + 23)
+  ctx.fillText(text, viewW / 2, top + 23, w - 16)
   ctx.textAlign = 'left'
 }
 

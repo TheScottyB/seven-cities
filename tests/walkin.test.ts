@@ -1,5 +1,6 @@
 import { makeScene, tickScene, isBlockedAt } from '../src/game/walkin'
 import { Facing } from '../src/game/explorer'
+import { effectiveTemperament, moodOf } from '../src/game/encounter'
 import type { Village } from '../src/world/villages'
 
 function village(over: Partial<Village> = {}): Village {
@@ -104,4 +105,27 @@ test('sliding down the west wall of a hut faces the slide, not the keys', () => 
   expect(s.px).toBe(spot!.x)
   expect(s.py).toBeGreaterThan(spot!.y)
   expect(s.facing).toBe(Facing.S)
+})
+
+test('a tick without input clears moving but keeps the stride', () => {
+  const s = makeScene(village(), 0)
+  expect(s.moving).toBe(false)
+  tickScene(s, 0, -1, 1 / 60)
+  expect(s.moving).toBe(true)
+  const gait = s.gait
+  expect(gait).toBeGreaterThan(0)
+  tickScene(s, 0, 0, 1 / 60)
+  expect(s.moving).toBe(false)
+  expect(s.gait).toBe(gait)
+})
+
+test('walk-in hostility is the shared hostile mood', () => {
+  for (let i = 0; i <= 40; i++) {
+    const temperament = i / 40
+    for (const fear of [0, 25, 60, 100]) {
+      const eff = effectiveTemperament(temperament, fear)
+      const s = makeScene(village({ temperament }), fear)
+      expect(s.hostile).toBe(moodOf(eff) === 'hostile')
+    }
+  }
 })

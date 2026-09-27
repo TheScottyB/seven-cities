@@ -1,3 +1,5 @@
+import { CITIES_OF_GOLD } from '../world/villages'
+
 // Plain object rather than an enum (erasableSyntaxOnly); the numeric values are persisted in saves.
 export const GameStatus = { Playing: 0, Won: 1, Lost: 2 } as const
 export type GameStatus = (typeof GameStatus)[keyof typeof GameStatus]
@@ -61,7 +63,7 @@ export function tick(s: GameState, dt: number): void {
   s.crew = Math.max(0, s.crew)
   s.morale = Math.max(0, s.morale)
 
-  if (s.citiesFound >= 7) {
+  if (s.citiesFound >= CITIES_OF_GOLD) {
     s.status = GameStatus.Won
     return
   }

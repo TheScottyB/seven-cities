@@ -1,7 +1,7 @@
 /**
  * The career: gold banked with the Crown across voyages buys rank, and rank
  * buys bigger outfitting budgets. The New World persists between voyages —
- * returning to Spain is how an expedition resupplies its trade goods.
+ * returning to Spain is how an expedition re-outfits.
  */
 import { BUDGET } from './outfit'
 

@@ -1,4 +1,5 @@
 import type { WalkinScene } from '../game/walkin'
+import { moodOf } from '../game/encounter'
 import type { Tileset } from '../art/tileset'
 import { DECORS, tileIndex } from '../art/relief'
 import { TILE } from '../world/tiles'
@@ -117,7 +118,7 @@ export function drawWalkin(
   ctx.translate(Math.round(sx(scene.px)), Math.round(sy(scene.py)))
   ctx.scale(scale, scale)
   ctx.imageSmoothingEnabled = false
-  drawExplorerSprite(ctx, sprites, 0, 7, scene.facing, scene.gait)
+  drawExplorerSprite(ctx, sprites, 0, 7, scene.facing, scene.moving ? scene.gait : 0)
   ctx.restore()
 
   // the light of the moment: hostile dusk-red, wary overcast, friendly warmth
@@ -136,7 +137,7 @@ export function drawWalkin(
     vig.addColorStop(1, 'rgba(120,20,16,0.32)')
     ctx.fillStyle = vig
     ctx.fillRect(ox, oy, sw, sh)
-  } else if (scene.mood > 0.66) {
+  } else if (moodOf(scene.mood) === 'friendly') {
     ctx.fillStyle = 'rgba(255,214,120,0.05)'
     ctx.fillRect(ox, oy, sw, sh)
   } else {
@@ -179,12 +180,15 @@ export function drawWalkin(
   ctx.strokeStyle = scene.hostile ? 'rgba(192,80,77,0.8)' : 'rgba(244,196,48,0.6)'
   ctx.lineWidth = 1
   ctx.strokeRect(nx + 0.5, ny + 0.5, noteW - 1, 31)
+  // explicit baseline, centred on the plate: the inherited one varies by frame
   ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
   ctx.fillStyle = scene.hostile ? '#e08a86' : '#c9c9d2'
-  ctx.fillText(hostileNote, viewW / 2, ny + 22)
+  ctx.fillText(hostileNote, viewW / 2, ny + 16)
 
   ctx.fillStyle = '#7a7a86'
   ctx.font = "14px 'Courier New', monospace"
   ctx.fillText('Walk to the chief to parley — or walk out the way you came (Esc leaves)', viewW / 2, oy + sh + 30)
   ctx.textAlign = 'left'
+  ctx.textBaseline = 'alphabetic'
 }

@@ -6,10 +6,13 @@
  *   start -> outfit -> playing <-> walkin
  *   playing -> spain -> outfit (the next voyage, same New World)
  *   playing -> over -> outfit (a fresh world)
- *   Esc from playing saves and returns to start; Continue resumes the save.
+ *   Esc from playing saves and returns to start; Continue resumes the live
+ *   world if there is one, else the save.
  *
  * Persistence is localStorage only: SAVE_KEY holds the running expedition,
- * CHRONICLE_KEY the record of finished ones.
+ * CHRONICLE_KEY the record of finished ones. A save taken on the way to Spain
+ * is marked 'refit' and resumes on the outfit screen. Only the tab that last
+ * wrote SAVE_KEY (or claimed it through OWNER_KEY) keeps saving (see saveOwner).
  *
  * The window.__dbg hook at the bottom exists in DEV builds only.
  */
@@ -32,7 +35,7 @@ import { sceneControls, type SceneInput } from './audio/scene'
 import { synthTexture, type TextureKind } from './audio/texture'
 import { drawWalkin } from './ui/walkin'
 import { defaultOutfit, adjustOutfit, remainingBudget, type Outfit } from './game/outfit'
-import { serializeSave, deserializeSave, unpackBits, type SaveData } from './game/save'
+import { serializeSave, deserializeSave, unpackBits, mapFingerprint, type SaveData, type SavePhase } from './game/save'
 import {
   addEntry,
   serializeChronicle,
@@ -63,6 +66,8 @@ const RUMOR_RADIUS = 4
 const AUTOSAVE_EVERY = 5 // seconds
 const SAVE_KEY = 'seven-cities-save'
 const CHRONICLE_KEY = 'seven-cities-chronicle'
+/** A fresh token written when a tab takes over the save; storage events only fire on a changed value. */
+const OWNER_KEY = 'seven-cities-save-owner'
 
 const canvas = document.getElementById('game') as HTMLCanvasElement
 const ctx = canvas.getContext('2d')!
@@ -123,10 +128,42 @@ let career: Career = makeCareer()
 let nextVoyage = false // outfit screen: fresh career vs. re-outfitting in Spain
 let justBanked = 0
 let promoted = false
+/** Esc from 'playing' left a live world that C can return to without storage. */
+let resumable = false
+/** The outfit screen warns that setting sail overwrites the single save slot. */
+let outfitReplacesSave = false
+/** Title-screen storage reads, cached until the next storage write or screen change. */
+let titleInfo: { hasSave: boolean; chronicle: ChronicleEntry[] } | null = null
+/** False once another tab has written the save; this tab then stops saving. */
+let saveOwner = true
+let ownerWarned = false
+let storageOk = true
+let storageWarned = false
 const player = new AudioPlayer()
 let audioEvents: GameEvent[] = []
 let prevSnap: AudioSnapshot | null = null
-window.addEventListener('keydown', () => player.unlock())
+
+let persistAsked = false
+/** Ask once, on the first gesture, that the browser not evict our saves. */
+function askPersist() {
+  if (persistAsked) return
+  persistAsked = true
+  try {
+    navigator.storage?.persist?.().catch(() => {})
+  } catch {
+    /* unsupported: saves still work, just evictable */
+  }
+}
+window.addEventListener('keydown', () => {
+  player.unlock()
+  askPersist()
+})
+window.addEventListener('storage', (e) => {
+  if (e.key === SAVE_KEY || e.key === OWNER_KEY) {
+    saveOwner = false
+    titleInfo = null
+  }
+})
 
 // --- mouse: canvas UI elements are clickable -------------------------------
 const clicks: string[] = []
@@ -139,6 +176,7 @@ function canvasPoint(e: MouseEvent): { x: number; y: number } {
 }
 canvas.addEventListener('click', (e) => {
   player.unlock()
+  askPersist()
   const p = canvasPoint(e)
   const id = hitAt(p.x, p.y)
   if (id) clicks.push(id)
@@ -239,6 +277,7 @@ function newWorld(seedStr: string): World {
 
 function embark() {
   world = newWorld(world.seedStr)
+  claimSave(true) // a fresh expedition takes the slot even if another tab wrote meanwhile
   applyOutfit()
   screen = 'playing'
 }
@@ -265,18 +304,55 @@ function applyOutfit() {
   encounter = null
   walkin = null
   flash = { text: '', t: 0 } // no toast carried over from a previous run
-  saveGame()
+  saveGame('at-sea')
+}
+
+/** A fresh career: start-new, restart after game over, and the dev hook's setSeed. */
+function resetSession() {
+  career = makeCareer()
+  nextVoyage = false
+  justBanked = 0
+  promoted = false
+  resumable = false
 }
 
 // --- save / load ---------------------------------------------------------
 
-function saveGame() {
-  if (world.state.status !== GameStatus.Playing) return
+/** This tab becomes the one that saves; `announce` tells any other tab to stop now. */
+function claimSave(announce: boolean) {
+  saveOwner = true
+  ownerWarned = false
+  if (!announce) return
+  try {
+    localStorage.setItem(OWNER_KEY, `${Date.now()}-${Math.random()}`)
+  } catch {
+    /* no storage, nothing to contend for */
+  }
+}
+
+/** Can this tab write SAVE_KEY? Warns once when another tab has taken it over. */
+function ownsSave(): boolean {
+  if (saveOwner) return true
+  if (!ownerWarned && screen === 'playing') {
+    ownerWarned = true
+    flash = { text: 'This expedition is open in another tab. Progress here is not being saved.', t: 4 }
+  }
+  return false
+}
+
+/** Write the running expedition; true once it is in storage. */
+function saveGame(phase: SavePhase = 'at-sea'): boolean {
+  if (world.state.status !== GameStatus.Playing) return false
+  if (!ownsSave()) return false
+  titleInfo = null
+  const { map } = world
   try {
     localStorage.setItem(
       SAVE_KEY,
       serializeSave({
         seedStr: world.seedStr,
+        mapHash: mapFingerprint(map.tiles, map.width, map.height, world.villages),
+        phase,
         state: world.state,
         explorer: { x: world.explorer.x, y: world.explorer.y },
         ships: world.ships.map((sh) => ({ x: sh.x, y: sh.y })),
@@ -288,8 +364,16 @@ function saveGame() {
         villages: world.villages,
       }),
     )
+    storageOk = true
+    return true
   } catch {
-    // storage full/blocked — the game just plays without saves
+    // storage full/blocked: the game plays on without saves, and says so once
+    storageOk = false
+    if (!storageWarned && screen === 'playing') {
+      storageWarned = true
+      flash = { text: 'Saving is unavailable in this browser: progress lasts only until you close the tab.', t: 4 }
+    }
+    return false
   }
 }
 
@@ -320,6 +404,7 @@ function recordExpedition() {
     day: s.day,
     cities: s.citiesFound,
   }
+  titleInfo = null
   try {
     localStorage.setItem(CHRONICLE_KEY, serializeChronicle(addEntry(loadChronicle(), entry)))
   } catch {
@@ -328,6 +413,8 @@ function recordExpedition() {
 }
 
 function clearSave() {
+  if (!ownsSave()) return
+  titleInfo = null
   try {
     localStorage.removeItem(SAVE_KEY)
   } catch {
@@ -335,26 +422,78 @@ function clearSave() {
   }
 }
 
+const inMap = (map: World['map'], p: { x: number; y: number }) =>
+  p.x >= 0 && p.y >= 0 && p.x < map.width && p.y < map.height
+
+/**
+ * Rebuild the saved expedition on a freshly generated world. Throws when the
+ * save does not fit that world; nothing module-level changes until it succeeds.
+ */
 function restoreWorld(save: SaveData): World {
   const w = newWorld(save.seedStr)
+  const { map } = w
+  if (
+    save.villages.length !== w.villages.length ||
+    mapFingerprint(map.tiles, map.width, map.height, w.villages) !== save.mapHash
+  ) {
+    throw new Error('save was taken on a different world')
+  }
+  if (atob(save.fogSeenB64).length !== Math.ceil(w.fog.seen.length / 8)) throw new Error('fog size mismatch')
+  if (!inMap(map, save.explorer) || !save.ships.every((sh) => inMap(map, sh))) throw new Error('position off the map')
+
   w.state = { ...save.state }
   w.explorer.x = save.explorer.x
   w.explorer.y = save.explorer.y
-  w.ships = save.ships.map((sh) => ({ ...sh }))
-  w.activeShip = Math.min(save.activeShip, w.ships.length - 1)
+  w.ships = save.ships.map((sh) => ({ x: sh.x, y: sh.y }))
+  w.activeShip = save.activeShip
   w.sailing = save.sailing
   w.outposts = save.outposts.map((o) => ({ ...o }))
-  career = { ...save.career }
   w.fog.seen = unpackBits(save.fogSeenB64, w.fog.seen.length)
   w.fog.revealedCount = w.fog.seen.reduce((a, b) => a + b, 0)
   invalidateMinimap() // the restored fog reveals far more than the fresh world did
-  // the map (and thus village placement) regenerates identically from the
-  // seed; only the mutable per-village fields need restoring
-  if (save.villages.length === w.villages.length) {
-    save.villages.forEach((sv, i) => Object.assign(w.villages[i], sv))
-  }
+  // placement (x, y, golden) regenerates from the seed and is covered by
+  // mapHash; only the fields play changes are restored
+  save.villages.forEach((sv, i) => {
+    const v = w.villages[i]
+    v.visited = sv.visited === true
+    v.depleted = sv.depleted === true
+    if (Number.isFinite(sv.temperament)) v.temperament = sv.temperament
+  })
   w.cam = { x: w.explorer.x, y: w.explorer.y }
+  career = { ...save.career }
   return w
+}
+
+/** C on the title: the live world after Esc, else the stored save. */
+function continueExpedition() {
+  if (resumable) {
+    resumable = false
+    screen = 'playing'
+    return
+  }
+  const save = loadSave()
+  if (!save) return
+  claimSave(true)
+  try {
+    world = restoreWorld(save)
+  } catch {
+    clearSave()
+    flash = { text: 'Your saved expedition could not be read.', t: 3.5 }
+    return
+  }
+  prevSnap = null // ambience bed only: no cues for what the restored world "changed"
+  flash = { text: '', t: 0 }
+  encounter = null
+  walkin = null
+  if (save.phase === 'refit') {
+    // saved on the way to Spain; the court screen's figures aren't persisted
+    nextVoyage = true
+    outfit = defaultOutfit()
+    outfitRow = 0
+    screen = 'outfit'
+  } else {
+    screen = 'playing'
+  }
 }
 
 // --- update --------------------------------------------------------------
@@ -409,6 +548,7 @@ function update(dt: number) {
   if (screen === 'walkin' && walkin && walkinVillage) {
     const { dx, dy } = input.axis()
     const status = tickScene(walkin, dx, dy, dt * timeScale)
+    if (flash.t > 0) flash.t -= dt * timeScale
     if (input.pressed('esc') || status === 'left') {
       screen = 'playing'
       walkin = null
@@ -430,22 +570,21 @@ function update(dt: number) {
   }
 
   if (screen === 'start') {
+    if (flash.t > 0) flash.t -= dt * timeScale
     if (input.pressed('enter') || click === 'start-new') {
+      outfitReplacesSave = titleInfo?.hasSave ?? loadSave() !== null
+      resetSession()
+      claimSave(false)
       outfit = defaultOutfit()
       outfitRow = 0
-      career = makeCareer()
-      nextVoyage = false
+      flash = { text: '', t: 0 }
       screen = 'outfit'
     } else if (input.pressed('c') || click === 'start-continue') {
-      const save = loadSave()
-      if (save) {
-        world = restoreWorld(save)
-        encounter = null
-        screen = 'playing'
-      }
+      continueExpedition()
     } else if (input.pressed('r') || click === 'start-reroll') {
       // roll a new world to explore
       world = newWorld(String(1 + (Math.floor(performance.now() * 7) % 99999)))
+      resumable = false
     }
     input.endFrame()
     pumpAudio()
@@ -471,8 +610,7 @@ function update(dt: number) {
     if (input.pressed('enter') || click === 'outfit-go') {
       if (nextVoyage) embarkVoyage()
       else embark()
-    }
-    if (input.pressed('esc') && !nextVoyage) screen = 'start'
+    } else if (input.pressed('esc') && !nextVoyage) screen = 'start'
     input.endFrame()
     pumpAudio()
     return
@@ -492,7 +630,9 @@ function update(dt: number) {
 
   if (screen === 'over') {
     if (input.pressed('enter') || click === 'over-restart') {
+      resetSession()
       world = newWorld(String(1492 + (Math.floor(performance.now()) % 9999)))
+      outfitReplacesSave = false
       outfit = defaultOutfit()
       outfitRow = 0
       encounter = null
@@ -565,7 +705,7 @@ function update(dt: number) {
         state.gold = 0
         promoted = rankIndex(career.banked) > before
         screen = 'spain'
-        saveGame()
+        saveGame('refit')
       } else if (world.sailing) {
         const spots = landingSpots(map, explorer.x, explorer.y)
         if (spots.length) {
@@ -604,23 +744,29 @@ function update(dt: number) {
       }
     }
 
-    if (input.pressed('esc')) {
-      // save and return to the title screen; Continue picks it right back up
-      saveGame()
-      screen = 'start'
+    // the action above may already have left 'playing' (walk-in, Spain) this frame
+    if (screen === 'playing' && input.pressed('esc')) {
+      // save and return to the title screen; Continue picks it right back up.
+      // The flash clears first so a save warning carries to the title.
       flash = { text: '', t: 0 }
-    }
-
-    autosaveIn -= sdt
-    if (autosaveIn <= 0) {
-      autosaveIn = AUTOSAVE_EVERY
       saveGame()
+      resumable = true
+      screen = 'start'
     }
 
-    if (state.status !== GameStatus.Playing) {
-      clearSave()
-      recordExpedition()
-      screen = 'over'
+    if (screen === 'playing') {
+      autosaveIn -= sdt
+      if (autosaveIn <= 0) {
+        autosaveIn = AUTOSAVE_EVERY
+        saveGame()
+      }
+
+      if (state.status !== GameStatus.Playing) {
+        clearSave()
+        recordExpedition()
+        resumable = false
+        screen = 'over'
+      }
     }
   }
 
@@ -675,11 +821,14 @@ function render() {
   const rc: RenderCtx = { ctx, viewW: canvas.width, viewH: canvas.height, tileset, zoom: zoomFor(canvas.width) }
 
   if (screen === 'start') {
-    drawStartScreen(ctx, canvas.width, canvas.height, world.seedStr, loadSave() !== null, loadChronicle())
+    titleInfo ??= { hasSave: loadSave() !== null, chronicle: loadChronicle() }
+    drawStartScreen(ctx, canvas.width, canvas.height, world.seedStr, resumable || titleInfo.hasSave, titleInfo.chronicle)
+    if (flash.t > 0) drawResult(ctx, canvas.width, canvas.height, flash.text, 28)
     return
   }
+  titleInfo = null
   if (screen === 'outfit') {
-    drawOutfitScreen(ctx, canvas.width, canvas.height, outfit, outfitRow, budgetFor(career.banked))
+    drawOutfitScreen(ctx, canvas.width, canvas.height, outfit, outfitRow, budgetFor(career.banked), !nextVoyage && outfitReplacesSave)
     return
   }
   if (screen === 'spain') {
@@ -801,6 +950,7 @@ if (import.meta.env.DEV) {
     },
     walkin: () => walkin, // the active walk-in scene, or null
     career: () => career, // banked gold and voyage count
+    storage: () => ({ ok: storageOk, owner: saveOwner, resumable }), // last save write succeeded; this tab owns the save; Esc left a live world
     audioLog: () => player.getLog(), // copy of the capped cue/music log: { id, at }[]
     renderCue: async (id: string) => { // offline-render a cue: rms plus Goertzel energies
       const off = new OfflineAudioContext(1, 2 * 44100, 44100)
@@ -857,7 +1007,11 @@ if (import.meta.env.DEV) {
     },
     setSeed: (s: string) => { // fresh world from seed s, back on the title ready for Enter
       world = newWorld(s)
+      resetSession()
       encounter = null
+      walkin = null
+      flash = { text: '', t: 0 }
+      titleInfo = null
       screen = 'start'
     },
     teleportToVillage: (i = 0) => { // move explorer onto the i-th undepleted village; returns it

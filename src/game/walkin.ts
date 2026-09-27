@@ -1,6 +1,6 @@
 import type { Village } from '../world/villages'
 import { makeRng, type Rng } from '../world/rng'
-import { effectiveTemperament } from './encounter'
+import { effectiveTemperament, moodOf } from './encounter'
 import { Facing, GAIT_CYCLE, facingFrom } from './explorer'
 
 /**
@@ -35,6 +35,8 @@ export interface WalkinScene {
   /** which way the conquistador is turned, and how far into his stride */
   facing: number
   gait: number
+  /** whether he actually moved this tick; the sprite stands neutral when not */
+  moving: boolean
   villagers: Villager[]
   hostile: boolean
   /** effective temperament 0..1 — the renderer tints the light with it */
@@ -107,8 +109,9 @@ export function makeScene(v: Village, fear: number): WalkinScene {
     py: h - 1.2,
     facing: Facing.N, // he enters from the south, looking up the path
     gait: 0,
+    moving: false,
     villagers,
-    hostile: eff < 0.3,
+    hostile: moodOf(eff) === 'hostile',
     mood: eff,
     golden: v.golden,
     props,
@@ -125,6 +128,7 @@ export function isBlockedAt(s: WalkinScene, x: number, y: number): boolean {
 
 export function tickScene(s: WalkinScene, dx: number, dy: number, dt: number): WalkinStatus {
   s.t += dt
+  s.moving = false
   if (dx !== 0 || dy !== 0) {
     const x0 = s.px
     const y0 = s.py
@@ -138,6 +142,7 @@ export function tickScene(s: WalkinScene, dx: number, dy: number, dt: number): W
     const ddx = s.px - x0
     const ddy = s.py - y0
     if (ddx !== 0 || ddy !== 0) {
+      s.moving = true
       s.facing = facingFrom(ddx, ddy)
       s.gait = (s.gait + Math.hypot(ddx, ddy) * WALKIN_STRIDE) % GAIT_CYCLE
     }

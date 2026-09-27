@@ -31,6 +31,12 @@ export interface WorldArt {
   sprites: SpriteBank
 }
 
+/**
+ * The OS reduced-motion preference. Read per frame so a change applies live;
+ * guarded because node tests import this module.
+ */
+const reduceMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null
+
 /** How close (in tiles) the explorer must be for a tile to count as "in view". */
 const VIEW_RADIUS = 5
 
@@ -82,17 +88,23 @@ export function renderWorld(
 ): void {
   const { ctx, zoom, tileset } = rc
 
-  // the unexplored world is blank chart paper, not a void
+  const viewW = rc.viewW / zoom
+  const viewH = rc.viewH / zoom
+  const { ox, oy } = originFor(cam, viewW, viewH)
+  const still = reduceMotion?.matches === true
+
+  // the unexplored world is blank chart paper, not a void. The fill stays in
+  // screen space; the pattern is shifted to the world origin so the grain
+  // travels with the chart instead of sliding under it.
   ctx.imageSmoothingEnabled = false
-  ctx.fillStyle = paperPattern(ctx, zoom)
+  const paper = paperPattern(ctx, zoom)
+  paper.setTransform(new DOMMatrix([1, 0, 0, 1, ox * zoom, oy * zoom]))
+  ctx.fillStyle = paper
   ctx.fillRect(0, 0, rc.viewW, rc.viewH)
 
   ctx.save()
   ctx.scale(zoom, zoom)
   ctx.imageSmoothingEnabled = false
-  const viewW = rc.viewW / zoom
-  const viewH = rc.viewH / zoom
-  const { ox, oy } = originFor(cam, viewW, viewH)
 
   const cols = Math.ceil(viewW / TILE_PX) + 2
   const rows = Math.ceil(viewH / TILE_PX) + 2
@@ -132,7 +144,11 @@ export function renderWorld(
       const frames = tileset.get(tl)!
       const nPhase = PHASES[tl] ?? 1
       let phase = 0
-      if (tl === TILE.OCEAN || tl === TILE.RIVER) {
+      if (still) {
+        // reduced motion: a fixed frame per tile, keeping the variety of the
+        // per-tile hash without the shimmer
+        if (tl === TILE.OCEAN || tl === TILE.RIVER) phase = tileHash(tx, ty) % nPhase
+      } else if (tl === TILE.OCEAN || tl === TILE.RIVER) {
         // keep the per-tile hash: it is what stops the whole sea moving in
         // lockstep. Without it the ocean marches in vertical stripes.
         phase = (tileHash(tx, ty) + Math.floor(now / 450 + tx * 0.7)) % nPhase
@@ -160,7 +176,7 @@ export function renderWorld(
         if (n || e || s || w) {
           // slaved to the same clock and per-column offset as the water
           // shimmer; a second rhythm on the same tiles reads as noise.
-          const crest = fastSin(now / 450 + tx * 0.7)
+          const crest = fastSin((still ? 0 : now / 450) + tx * 0.7)
           const band = crest > 0.35 ? 3 : 2
           ctx.fillStyle = crest > 0.35 ? 'rgba(236,244,252,0.52)' : 'rgba(232,240,248,0.4)'
           if (n) ctx.fillRect(sx, sy, TILE_PX, band)
@@ -231,7 +247,7 @@ export function renderWorld(
     const sy = ey(v.y + 0.5)
     ctx.globalAlpha = v.depleted ? 0.55 : 1
     drawShadow(ctx, sx + 1, sy + TILE_PX * 0.32 + 1, TILE_PX * 0.46)
-    drawVillage(ctx, sx, sy, v.golden, v.visited, v.depleted ? -1 : t + (v.x * 7 + v.y) * 0.61)
+    drawVillage(ctx, sx, sy, v.golden, v.visited, v.depleted || still ? -1 : t + (v.x * 7 + v.y) * 0.61)
     ctx.globalAlpha = 1
   }
 
@@ -240,13 +256,13 @@ export function renderWorld(
     const sx = ex(o.x + 0.5)
     const sy = ey(o.y + 0.5)
     drawShadow(ctx, sx + 1, sy + TILE_PX * 0.3 + 1, TILE_PX * 0.45)
-    drawFort(ctx, sx, sy, t + o.x * 0.37)
+    drawFort(ctx, sx, sy, still ? -1 : t + o.x * 0.37)
   }
 
   ships.forEach((sh, i) => {
     if (sailing && i === activeShip) return // the flagship is under you
     if (!isSeen(fog, Math.floor(sh.x), Math.floor(sh.y))) return
-    drawShipSprite(ctx, art.sprites, ex(sh.x), ey(sh.y) + TILE_PX * 0.3, sh.facing, t + i * 1.3)
+    drawShipSprite(ctx, art.sprites, ex(sh.x), ey(sh.y) + TILE_PX * 0.3, sh.facing, still ? -1 : t + i * 1.3)
   })
 
   const psx = ex(explorer.x)
@@ -256,12 +272,12 @@ export function renderWorld(
     // While sailing the explorer IS the helm: moveShip writes facing onto the
     // explorer, and only x/y are copied back to the moored fleet. Reading the
     // ship's own facing here would show it frozen at its mooring heading.
-    drawShipSprite(ctx, art.sprites, psx, psy + TILE_PX * 0.3, explorer.facing, t)
+    drawShipSprite(ctx, art.sprites, psx, psy + TILE_PX * 0.3, explorer.facing, still ? -1 : t)
   } else if (underfoot === TILE.RIVER) {
     drawShadow(ctx, psx + 1, psy + TILE_PX * 0.34 + 1, TILE_PX * 0.34)
     drawCanoe(ctx, psx, psy)
   } else {
-    drawExplorerSprite(ctx, art.sprites, psx, psy + TILE_PX * 0.42, explorer.facing, explorer.gait)
+    drawExplorerSprite(ctx, art.sprites, psx, psy + TILE_PX * 0.42, explorer.facing, explorer.moving ? explorer.gait : 0)
   }
 
   ctx.restore()
@@ -300,7 +316,7 @@ export function renderStorms(
     ctx.fill()
     ctx.strokeStyle = 'rgba(210,222,240,0.35)'
     ctx.lineWidth = 1
-    const anim = (performance.now() / 60) % TILE_PX
+    const anim = reduceMotion?.matches === true ? 0 : (performance.now() / 60) % TILE_PX
     ctx.beginPath()
     for (let i = 0; i < 14; i++) {
       const a = (i / 14) * Math.PI * 2

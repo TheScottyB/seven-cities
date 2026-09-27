@@ -49,6 +49,7 @@ function buildPaperTile(): HTMLCanvasElement {
 
 let paperTile: HTMLCanvasElement | null = null
 let scaled: { zoom: number; canvas: HTMLCanvasElement } | null = null
+let pattern: { ctx: CanvasRenderingContext2D; zoom: number; pat: CanvasPattern } | null = null
 
 /**
  * The paper, pre-scaled to the current zoom and returned as a pattern that can
@@ -56,6 +57,9 @@ let scaled: { zoom: number; canvas: HTMLCanvasElement } | null = null
  * rather than trusting a scaled context to honour imageSmoothingEnabled on a
  * pattern — browsers have disagreed about that, and a softened grain would
  * quietly undo the whole pixel-art contract.
+ *
+ * The pattern is cached per (context, zoom); callers anchor it to the world
+ * with setTransform each frame.
  */
 export function paperPattern(ctx: CanvasRenderingContext2D, zoom: number): CanvasPattern {
   if (!paperTile) paperTile = buildPaperTile()
@@ -69,7 +73,10 @@ export function paperPattern(ctx: CanvasRenderingContext2D, zoom: number): Canva
     g.drawImage(src, 0, 0, c.width, c.height)
     scaled = { zoom, canvas: c }
   }
-  return ctx.createPattern(scaled.canvas, 'repeat')!
+  if (!pattern || pattern.ctx !== ctx || pattern.zoom !== zoom) {
+    pattern = { ctx, zoom, pat: ctx.createPattern(scaled.canvas, 'repeat')! }
+  }
+  return pattern.pat
 }
 
 /**

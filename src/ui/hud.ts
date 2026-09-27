@@ -1,4 +1,5 @@
-import type { GameState } from '../game/state'
+import { LOW_FOOD, type GameState } from '../game/state'
+import { CITIES_OF_GOLD } from '../world/villages'
 
 const FONT = "16px 'Courier New', monospace"
 
@@ -42,8 +43,10 @@ export function drawWindIndicator(
   ctx.font = "11px 'Courier New', monospace"
   ctx.fillStyle = '#9a9aa6'
   ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
   ctx.fillText('WIND', cx, cy + r + 16)
   ctx.textAlign = 'left'
+  ctx.textBaseline = 'alphabetic'
 }
 
 /**
@@ -53,22 +56,26 @@ export function drawWindIndicator(
  * beneath it (minimap, wind compass) can shift down.
  */
 export function drawHud(ctx: CanvasRenderingContext2D, viewW: number, s: GameState, banked = 0): number {
+  ctx.save()
   ctx.font = FONT
   ctx.textBaseline = 'middle'
 
-  const foodColor = s.food < 80 ? '#c0504d' : s.food < 150 ? '#e0b34f' : '#7fd17f'
+  const foodColor = s.food < LOW_FOOD ? '#c0504d' : s.food < 150 ? '#e0b34f' : '#7fd17f'
   const goodsColor = s.goods < 25 ? '#c0504d' : '#d8925c'
+  // warning tiers carry a mark as well as a colour, so they read without it
+  const warn = (v: number, low: boolean) => Math.floor(v).toString() + (low ? '!' : '')
+  // crew and morale round up: the expedition is alive until they reach zero
   const items: [string, string, string][] = [
-    ['Food', Math.floor(s.food).toString(), foodColor],
-    ['Goods', Math.floor(s.goods).toString(), goodsColor],
-    ['Crew', Math.floor(s.crew).toString(), '#e0d18a'],
+    ['Food', warn(s.food, s.food < 150), foodColor],
+    ['Goods', warn(s.goods, s.goods < 25), goodsColor],
+    ['Crew', Math.ceil(s.crew).toString(), '#e0d18a'],
     ['Gold', Math.floor(s.gold).toString(), '#f4c430'],
   ]
   if (banked > 0) items.push(['Bank', Math.floor(banked).toString(), '#c9a94f'])
-  items.push(['Morale', Math.floor(s.morale).toString(), '#7fb0ff'])
-  if (s.fear >= 1) items.push(['Fear', Math.floor(s.fear).toString(), s.fear > 40 ? '#c0504d' : '#8a8a94'])
+  items.push(['Morale', Math.ceil(s.morale).toString(), '#7fb0ff'])
+  if (s.fear >= 1) items.push(['Fear', warn(s.fear, s.fear > 40), s.fear > 40 ? '#c0504d' : '#8a8a94'])
   items.push(['Day', s.day.toString(), '#cccccc'])
-  items.push(['Cities', `${s.citiesFound}/7`, '#f4c430'])
+  items.push(['Cities', `${s.citiesFound}/${CITIES_OF_GOLD}`, '#f4c430'])
 
   // measure and wrap
   const placed: { x: number; row: number; label: string; value: string; color: string; lw: number }[] = []
@@ -99,5 +106,6 @@ export function drawHud(ctx: CanvasRenderingContext2D, viewW: number, s: GameSta
     ctx.fillStyle = it.color
     ctx.fillText(it.value, it.x + it.lw, y)
   }
+  ctx.restore()
   return height
 }
