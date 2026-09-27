@@ -2,6 +2,8 @@ export class Input {
   private held = new Set<string>()
   private edge = new Set<string>()
   private repeat = new Set<string>()
+  /** keys still physically down after swallowHeld(); ignored until released */
+  private swallowed = new Set<string>()
   /** A driver that sends its own keydown/keyup pairs keeps them across blur and hide. */
   keepOnBlur = false
 
@@ -11,6 +13,10 @@ export class Input {
       // Leave browser/OS shortcuts (Ctrl+R, Cmd+W, Alt+Tab) to the browser.
       if (ke.ctrlKey || ke.metaKey || ke.altKey) return
       const k = key(ke)
+      if (this.swallowed.has(k)) {
+        if (HANDLED.has(k)) ke.preventDefault()
+        return
+      }
       if (ke.repeat || this.held.has(k)) this.repeat.add(k)
       else this.edge.add(k)
       this.held.add(k)
@@ -18,7 +24,9 @@ export class Input {
     })
     target.addEventListener('keyup', (e) => {
       const ke = e as KeyboardEvent
-      this.held.delete(key(ke))
+      const k = key(ke)
+      this.held.delete(k)
+      this.swallowed.delete(k)
       // macOS swallows keyups for keys released while Cmd was down.
       if (ke.key === 'Meta') this.reset()
     })
@@ -38,6 +46,17 @@ export class Input {
     this.held.clear()
     this.edge.clear()
     this.repeat.clear()
+    this.swallowed.clear()
+  }
+
+  /**
+   * Forget every key now held and ignore each one — auto-repeats included —
+   * until it is released, so the press that dismissed a pause does nothing else.
+   */
+  swallowHeld(): void {
+    const held = [...this.held]
+    this.reset()
+    for (const k of held) this.swallowed.add(k)
   }
 
   /** Normalized-ish movement axis from WASD / arrow keys. */

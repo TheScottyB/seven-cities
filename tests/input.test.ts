@@ -18,6 +18,30 @@ test('blur clears held keys', () => {
   expect(input.axis()).toEqual({ dx: 0, dy: 0 })
 })
 
+test('swallowHeld() ignores a held key, repeats included, until it is released', () => {
+  const { input, down, up } = setup()
+  down({ key: 'ArrowUp' })
+  input.swallowHeld()
+  expect(input.axis()).toEqual({ dx: 0, dy: 0 })
+  down({ key: 'ArrowUp', repeat: true }) // the OS keeps auto-repeating the held key
+  input.endFrame()
+  expect(input.axis()).toEqual({ dx: 0, dy: 0 })
+  expect(input.pressed('up')).toBe(false)
+  up({ key: 'ArrowUp' })
+  down({ key: 'ArrowUp' }) // a fresh press works normally
+  expect(input.axis()).toEqual({ dx: 0, dy: -1 })
+  expect(input.pressed('up')).toBe(true)
+})
+
+test('blur after swallowHeld() does not eat the next press', () => {
+  const { target, input, down } = setup()
+  down({ key: 'e' })
+  input.swallowHeld()
+  target.dispatchEvent(new Event('blur')) // released in another window: no keyup arrives
+  down({ key: 'e' })
+  expect(input.pressed('action')).toBe(true)
+})
+
 test('reset() clears held and pending presses', () => {
   const { input, down } = setup()
   down({ key: 'Enter' })

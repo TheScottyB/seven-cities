@@ -225,7 +225,7 @@ player.setMuted(muted)
 
 /** The key or click that ends a pause (routeKey/routeClick cleared it) does nothing else. */
 function unpause() {
-  input.endFrame()
+  input.swallowHeld() // a movement key held to resume must not walk the explorer off
   clicks.length = 0
 }
 
