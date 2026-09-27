@@ -1,7 +1,6 @@
 import { LOW_FOOD, type GameState } from '../game/state'
 import { CITIES_OF_GOLD } from '../world/villages'
-
-const FONT = "16px 'Courier New', monospace"
+import { font } from './font'
 
 /** Compass-style wind arrow shown while sailing (left of the minimap). */
 export function drawWindIndicator(
@@ -40,7 +39,7 @@ export function drawWindIndicator(
   ctx.lineTo(hx - Math.cos(angle + 0.45) * 7, hy - Math.sin(angle + 0.45) * 7)
   ctx.closePath()
   ctx.fill()
-  ctx.font = "11px 'Courier New', monospace"
+  ctx.font = font(11)
   ctx.fillStyle = '#9a9aa6'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
@@ -57,7 +56,7 @@ export function drawWindIndicator(
  */
 export function drawHud(ctx: CanvasRenderingContext2D, viewW: number, s: GameState, banked = 0): number {
   ctx.save()
-  ctx.font = FONT
+  ctx.font = font(16)
   ctx.textBaseline = 'middle'
 
   const foodColor = s.food < LOW_FOOD ? '#c0504d' : s.food < 150 ? '#e0b34f' : '#7fd17f'

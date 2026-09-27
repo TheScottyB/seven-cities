@@ -6,17 +6,24 @@
  *   start -> outfit -> playing <-> walkin
  *   playing -> spain -> outfit (the next voyage, same New World)
  *   playing -> over -> outfit (a fresh world)
- *   Esc from playing saves and returns to start; Continue resumes the live
- *   world if there is one, else the save.
+ *   Esc from playing saves and returns to start with the world kept live
+ *   (resumable); C on the title resumes it, else restores the save. A save
+ *   taken on the way to Spain is marked 'refit' and resumes on the outfit screen.
  *
- * Persistence is localStorage only: SAVE_KEY holds the running expedition,
- * CHRONICLE_KEY the record of finished ones. A save taken on the way to Spain
- * is marked 'refit' and resumes on the outfit screen. Only the tab that last
- * wrote SAVE_KEY (or claimed it through OWNER_KEY) keeps saving (see saveOwner).
+ * Two states sit over any screen. Paused: blur or hide mid-expedition holds
+ * the simulation until the next key or click, which is swallowed. Crashed: a
+ * throw from the loop leaves only a recovery card (Esc reloads, X discards the
+ * save). A hidden tab also saves and suspends audio.
  *
- * Lifecycle: a throw from the loop leaves only a recovery card (Esc reloads,
- * X discards the save); blur or hide mid-expedition pauses until the next key
- * or click, which is swallowed; a hidden tab saves and suspends audio.
+ * Persistence is localStorage only: 'seven-cities-save' holds the running
+ * expedition, 'seven-cities-chronicle' the record of finished ones and
+ * 'seven-cities-audio' the mute choice. Only the tab that last wrote the save,
+ * or claimed it through 'seven-cities-save-owner', keeps saving (see saveOwner).
+ *
+ * Drawing: the backing store is in device pixels. The world is drawn at an
+ * integer device zoom, interpolated between the last two 60Hz ticks; every UI
+ * layer is drawn in CSS pixels under the device-pixel-ratio transform, and hit
+ * regions and pointer coordinates use CSS pixels too.
  *
  * The window.__dbg hook at the bottom exists in DEV builds only.
  */
@@ -79,6 +86,7 @@ import { buildDeckles } from './art/paper'
 import { buildSpriteBank } from './art/spritebank'
 import { drawHud, drawWindIndicator } from './ui/hud'
 import { drawStartScreen, drawOutfitScreen, drawSpainScreen, drawEncounter, drawGameOver, drawResult } from './ui/panels'
+import { font } from './ui/font'
 import { seedFromString } from './world/rng'
 import { TILE } from './world/tiles'
 import type { Screen } from './game/screen'
@@ -96,12 +104,43 @@ const canvas = document.getElementById('game') as HTMLCanvasElement
 const ctx = canvas.getContext('2d')!
 const input = new Input()
 
+/** Device pixels per CSS pixel; the backing store is sized in device px. */
+let dpr = 1
+/** The view in CSS px: every UI layer and hit region is laid out in these. */
+let cssW = 0
+let cssH = 0
+/** Device px per art px for the world: always an integer, so tiles stay crisp at any dpr. */
+let devZoom = 2
+
+/**
+ * Where the camera and explorer stood at the start of the last playing tick;
+ * render draws between here and the current state. False after a jump
+ * (restore, landfall, resize, ...) so the next frame shows the new spot as is.
+ */
+let prevCam: Camera = { x: 0, y: 0 }
+let prevPos = { x: 0, y: 0 }
+let interpValid = false
+const resetInterp = () => {
+  interpValid = false
+}
+
 function resize() {
-  canvas.width = window.innerWidth
-  canvas.height = window.innerHeight
+  dpr = window.devicePixelRatio || 1
+  cssW = window.innerWidth
+  cssH = window.innerHeight
+  canvas.width = Math.round(cssW * dpr)
+  canvas.height = Math.round(cssH * dpr)
+  canvas.style.width = cssW + 'px'
+  canvas.style.height = cssH + 'px'
+  devZoom = Math.max(2, Math.round(zoomFor(cssW) * dpr))
+  resetInterp()
 }
 resize()
+// a browser zoom changes devicePixelRatio and fires this too
 window.addEventListener('resize', resize)
+
+/** UI layers draw in CSS px; the transform maps them onto the device-px backing store. */
+const uiTransform = () => ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
 interface World {
   seedStr: string
@@ -283,12 +322,10 @@ window.addEventListener('storage', (e) => {
 
 // --- mouse: canvas UI elements are clickable -------------------------------
 const clicks: string[] = []
+/** CSS px, the space hit regions are registered in under the UI transform. */
 function canvasPoint(e: MouseEvent): { x: number; y: number } {
   const r = canvas.getBoundingClientRect()
-  return {
-    x: ((e.clientX - r.left) * canvas.width) / r.width,
-    y: ((e.clientY - r.top) * canvas.height) / r.height,
-  }
+  return { x: e.clientX - r.left, y: e.clientY - r.top }
 }
 canvas.addEventListener('click', (e) => {
   onGesture()
@@ -384,6 +421,7 @@ function embark() {
   world = newWorld(world.seedStr)
   claimSave(true) // a fresh expedition takes the slot even if another tab wrote meanwhile
   applyOutfit()
+  resetInterp()
   screen = 'playing'
 }
 
@@ -396,6 +434,7 @@ function embarkVoyage() {
   world.state.morale = 100 // a fresh crew signs on
   applyOutfit()
   reveal(world.fog, Math.floor(world.explorer.x), Math.floor(world.explorer.y), REVEAL_RADIUS)
+  resetInterp()
   screen = 'playing'
 }
 
@@ -576,6 +615,7 @@ function restoreWorld(save: SaveData): World {
 
 /** C on the title: the live world after Esc, else the stored save. */
 function continueExpedition() {
+  resetInterp()
   if (resumable) {
     resumable = false
     screen = 'playing'
@@ -649,6 +689,7 @@ function update(dt: number) {
       screen = 'playing'
       walkin = null
     }
+    if (screen !== 'walkin') resetInterp()
     input.endFrame()
     pumpAudio()
     return
@@ -737,6 +778,8 @@ function update(dt: number) {
   // playing
   const sdt = dt * timeScale
   const { map, fog, state, explorer } = world
+  const fromCam = { x: world.cam.x, y: world.cam.y }
+  const fromPos = { x: explorer.x, y: explorer.y }
 
   if (encounter) {
     if (input.pressed('1') || click === 'enc-1') chooseEncounter('trade')
@@ -805,6 +848,7 @@ function update(dt: number) {
         }
         case 'landfall':
           // step ashore; the ship stays moored where we left it
+          resetInterp()
           world.sailing = false
           explorer.x = target.spot[0] + 0.5
           explorer.y = target.spot[1] + 0.5
@@ -820,6 +864,7 @@ function update(dt: number) {
           }
           walkin = makeScene(v, state.fear)
           walkinVillage = v
+          resetInterp()
           screen = 'walkin'
           break
         }
@@ -831,6 +876,7 @@ function update(dt: number) {
         }
         case 'ship': {
           const ship = world.ships[target.index]
+          resetInterp()
           world.activeShip = target.index
           world.sailing = true
           explorer.x = ship.x
@@ -872,7 +918,11 @@ function update(dt: number) {
     }
   }
 
-  centerCamera(world.cam, explorer.x, explorer.y, canvas.width, canvas.height, map.width, map.height, zoomFor(canvas.width))
+  centerCamera(world.cam, explorer.x, explorer.y, canvas.width, canvas.height, map.width, map.height, devZoom)
+  // after a jump this tick, the next frame starts from where things landed
+  prevCam = interpValid ? fromCam : { x: world.cam.x, y: world.cam.y }
+  prevPos = interpValid ? fromPos : { x: explorer.x, y: explorer.y }
+  interpValid = true
   input.endFrame()
   pumpAudio()
 }
@@ -919,29 +969,33 @@ function chooseEncounter(action: 'trade' | 'gift' | 'attack') {
 
 // --- render --------------------------------------------------------------
 
-function render() {
+/**
+ * One frame. `alpha` (0-1) places the playing view between the last two ticks;
+ * the lerp is drawn from copies, never written back to the world.
+ */
+function render(alpha = 1) {
   beginHits()
-  const rc: RenderCtx = { ctx, viewW: canvas.width, viewH: canvas.height, tileset, zoom: zoomFor(canvas.width) }
+  uiTransform()
 
   if (screen === 'start') {
     titleInfo ??= { hasSave: loadSave() !== null, chronicle: loadChronicle() }
     const soundLine = touchOnly ? undefined : muted ? 'M to unmute' : gestured ? 'M to mute' : 'Press any key for sound'
-    drawStartScreen(ctx, canvas.width, canvas.height, world.seedStr, resumable || titleInfo.hasSave, titleInfo.chronicle, {
+    drawStartScreen(ctx, cssW, cssH, world.seedStr, resumable || titleInfo.hasSave, titleInfo.chronicle, {
       soundLine,
       needKeyboard: touchOnly,
     })
-    if (flash.t > 0) drawResult(ctx, canvas.width, canvas.height, flash.text, 28)
+    if (flash.t > 0) drawResult(ctx, cssW, flash.text, 28)
     return
   }
   titleInfo = null
   if (screen === 'outfit') {
-    drawOutfitScreen(ctx, canvas.width, canvas.height, outfit, outfitRow, budgetFor(career.banked), !nextVoyage && outfitReplacesSave)
-    if (flash.t > 0) drawResult(ctx, canvas.width, canvas.height, flash.text, 28)
+    drawOutfitScreen(ctx, cssW, cssH, outfit, outfitRow, budgetFor(career.banked), !nextVoyage && outfitReplacesSave)
+    if (flash.t > 0) drawResult(ctx, cssW, flash.text, 28)
     return
   }
   if (screen === 'spain') {
-    drawSpainScreen(ctx, canvas.width, canvas.height, career, world.state, justBanked, promoted, performance.now() / 1000)
-    if (flash.t > 0) drawResult(ctx, canvas.width, canvas.height, flash.text, 28)
+    drawSpainScreen(ctx, cssW, cssH, career, world.state, justBanked, promoted, performance.now() / 1000)
+    if (flash.t > 0) drawResult(ctx, cssW, flash.text, 28)
     return
   }
   if (screen === 'walkin' && walkin && walkinVillage) {
@@ -958,28 +1012,42 @@ function render() {
           ? 'The people watch you with open curiosity.'
           : 'The people keep their distance, wary of the stranger.'
     }
-    drawWalkin(ctx, canvas.width, canvas.height, walkin, tileset, note, performance.now() / 1000, spriteBank)
-    if (flash.t > 0) drawResult(ctx, canvas.width, canvas.height, flash.text, 12)
+    drawWalkin(ctx, cssW, cssH, walkin, tileset, note, spriteBank, performance.now() / 1000)
+    if (flash.t > 0) drawResult(ctx, cssW, flash.text, 12)
     return
   }
 
-  renderWorld(rc, world.cam, world.map, world.fog, world.villages, world.explorer, world.ships, world.activeShip, world.sailing, world.outposts, world.art)
-  renderStorms(rc, world.cam, world.weather, world.state.elapsed, world.map, world.fog)
-  const hudH = drawHud(ctx, canvas.width, world.state, career.banked)
-  renderMinimap(rc, world.map, world.fog, world.explorer, world.villages, world.ships, world.outposts, hudH + 12, world.cam, world.art.relief)
+  // the world pass works in device px at an integer zoom, so the snaps in the
+  // renderer land on whole device pixels
+  let cam = world.cam
+  let explorer = world.explorer
+  if (screen === 'playing' && interpValid && !paused && alpha < 1) {
+    const lerp = (a: number, b: number) => a + (b - a) * alpha
+    cam = { x: lerp(prevCam.x, world.cam.x), y: lerp(prevCam.y, world.cam.y) }
+    explorer = { ...world.explorer, x: lerp(prevPos.x, world.explorer.x), y: lerp(prevPos.y, world.explorer.y) }
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  const rc: RenderCtx = { ctx, viewW: canvas.width, viewH: canvas.height, tileset, zoom: devZoom }
+  renderWorld(rc, cam, world.map, world.fog, world.villages, explorer, world.ships, world.activeShip, world.sailing, world.outposts, world.art)
+  renderStorms(rc, cam, world.weather, world.state.elapsed, world.map, world.fog)
+
+  uiTransform()
+  const hudH = drawHud(ctx, cssW, world.state, career.banked)
+  const uiRc: RenderCtx = { ctx, viewW: cssW, viewH: cssH, tileset, zoom: devZoom / dpr }
+  renderMinimap(uiRc, world.map, world.fog, explorer, world.villages, world.ships, world.outposts, hudH + 12, cam, world.art.relief)
   if (world.sailing) {
     const wind = windAt(world.weather, world.state.elapsed)
-    drawWindIndicator(ctx, canvas.width, wind.angle, wind.strength, hudH + 12)
+    drawWindIndicator(ctx, cssW, wind.angle, wind.strength, hudH + 12)
     // storm vignette: the sky presses down while you ride one out
     if (stormHere()) {
       const g = ctx.createRadialGradient(
-        canvas.width / 2, canvas.height / 2, Math.min(canvas.width, canvas.height) * 0.3,
-        canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) * 0.7,
+        cssW / 2, cssH / 2, Math.min(cssW, cssH) * 0.3,
+        cssW / 2, cssH / 2, Math.max(cssW, cssH) * 0.7,
       )
       g.addColorStop(0, 'rgba(20,12,16,0)')
       g.addColorStop(1, 'rgba(30,10,14,0.5)')
       ctx.fillStyle = g
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.fillRect(0, 0, cssW, cssH)
     }
   }
   if (!encounter && screen === 'playing') {
@@ -1008,13 +1076,13 @@ function render() {
         break
     }
     if (text) {
-      ctx.font = "16px 'Courier New', monospace"
+      ctx.font = font(16)
       ctx.fillStyle = 'rgba(0,0,0,0.6)'
-      ctx.fillRect(canvas.width / 2 - 185, canvas.height - 56, 370, 32)
+      ctx.fillRect(cssW / 2 - 185, cssH - 56, 370, 32)
       ctx.fillStyle = color
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle' // centred in the plate
-      ctx.fillText(text, canvas.width / 2, canvas.height - 40)
+      ctx.fillText(text, cssW / 2, cssH - 40)
       ctx.textAlign = 'left'
       ctx.textBaseline = 'alphabetic'
     }
@@ -1023,27 +1091,27 @@ function render() {
   // quiet key reference in the corner
   if (screen === 'playing' && !encounter) {
     const hint = world.sailing ? 'E interact · M sound · Esc menu' : 'E interact · F fort · M sound · Esc menu'
-    ctx.font = "12px 'Courier New', monospace"
+    ctx.font = font(12)
     ctx.textAlign = 'left'
     ctx.textBaseline = 'alphabetic'
     // a 1px dark copy keeps it legible over bright terrain without a plate
     ctx.fillStyle = 'rgba(0,0,0,0.8)'
-    ctx.fillText(hint, 13, canvas.height - 11)
+    ctx.fillText(hint, 13, cssH - 11)
     ctx.fillStyle = '#b4b4be'
-    ctx.fillText(hint, 12, canvas.height - 12)
+    ctx.fillText(hint, 12, cssH - 12)
   }
 
   // the banner yields while a decision panel is up — no overlapping chrome
-  if (flash.t > 0 && screen === 'playing' && !encounter) drawResult(ctx, canvas.width, canvas.height, flash.text, hudH + 10)
+  if (flash.t > 0 && screen === 'playing' && !encounter) drawResult(ctx, cssW, flash.text, hudH + 10)
   if (encounter)
-    drawEncounter(ctx, canvas.width, canvas.height, encounter, world.state.goods, world.state.fear, performance.now() / 1000)
+    drawEncounter(ctx, cssW, cssH, encounter, world.state.goods, world.state.fear, performance.now() / 1000)
 
   if (screen === 'over') {
     const won = world.state.status === GameStatus.Won
     drawGameOver(
       ctx,
-      canvas.width,
-      canvas.height,
+      cssW,
+      cssH,
       won,
       finalScore(),
       career,
@@ -1054,27 +1122,28 @@ function render() {
       },
       performance.now() / 1000,
     )
-    if (flash.t > 0) drawResult(ctx, canvas.width, canvas.height, flash.text, 28)
+    if (flash.t > 0) drawResult(ctx, cssW, flash.text, 28)
   }
 }
 
 /** The loop's frame: the recovery card after a crash, else the game plus any pause banner. */
-function present() {
+function present(alpha: number) {
   if (crashed) {
     drawCrashCard()
     return
   }
-  render()
-  if (paused) drawResult(ctx, canvas.width, canvas.height, 'Paused — press any key', Math.round(canvas.height / 2) - 17)
+  render(alpha)
+  uiTransform()
+  if (paused) drawResult(ctx, cssW, 'Paused — press any key', Math.round(cssH / 2) - 17)
 }
 
 /** Drawn from nothing but the canvas: no world, HUD or state that might be what broke. */
 function drawCrashCard() {
-  const w = canvas.width
-  const h = canvas.height
+  const w = cssW
+  const h = cssH
   // a throw may have left a save(), clip or transform open
   if (typeof ctx.reset === 'function') ctx.reset()
-  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  uiTransform()
   ctx.globalAlpha = 1
   ctx.globalCompositeOperation = 'source-over'
   ctx.shadowBlur = 0
@@ -1082,10 +1151,10 @@ function drawCrashCard() {
   ctx.fillRect(0, 0, w, h)
   ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
-  ctx.font = "bold 22px 'Courier New', monospace"
+  ctx.font = font(22, true)
   ctx.fillStyle = '#e8e8ee'
   ctx.fillText('Something went wrong.', Math.round(w / 2), Math.round(h / 2) - 12)
-  ctx.font = "16px 'Courier New', monospace"
+  ctx.font = font(16)
   ctx.fillStyle = '#9a9aa6'
   ctx.fillText('Esc: reload to title   X: discard save and reload', Math.round(w / 2), Math.round(h / 2) + 20)
   ctx.textAlign = 'left'
@@ -1176,6 +1245,7 @@ if (import.meta.env.DEV) {
     },
     setSeed: (s: string) => { // fresh world from seed s, back on the title ready for Enter
       standAside()
+      resetInterp()
       world = newWorld(s)
       resetSession()
       encounter = null
@@ -1189,6 +1259,7 @@ if (import.meta.env.DEV) {
       if (v) {
         world.explorer.x = v.x + 0.5
         world.explorer.y = v.y + 0.5
+        resetInterp()
       }
       return v
     },

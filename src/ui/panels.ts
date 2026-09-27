@@ -5,6 +5,7 @@ import { bestScore, type ChronicleEntry } from '../game/chronicle'
 import { rankTitle, rankIndex, budgetFor, RANKS, type Career } from '../game/career'
 import { dailyAppetite, type GameState, type ScoreParts } from '../game/state'
 import { addHit, hovered } from './hit'
+import { font } from './font'
 import { drawChief, drawIdol, drawShip, drawVillager, drawShadow, drawVillage } from '../art/sprites'
 
 function panel(ctx: CanvasRenderingContext2D, viewW: number, viewH: number, w: number, h: number, border = '#f4c430') {
@@ -167,13 +168,13 @@ export function drawOutfitScreen(
   ctx.fillRect(0, 0, viewW, viewH)
   drawFrame(ctx, viewW, viewH)
   const cx = viewW / 2
-  center(ctx, 'OUTFIT YOUR EXPEDITION', cx, viewH / 2 - 150, "bold 32px 'Courier New', monospace", '#f4c430')
+  center(ctx, 'OUTFIT YOUR EXPEDITION', cx, viewH / 2 - 150, font(32, true), '#f4c430')
   center(
     ctx,
     `The Crown grants you ${budget} gold. Spend it well — what remains sails with you.`,
     cx,
     viewH / 2 - 112,
-    "15px 'Courier New', monospace",
+    font(15),
     '#9a9aa6',
   )
 
@@ -188,7 +189,7 @@ export function drawOutfitScreen(
   const left = cx - 260
   rows.forEach(([key, label, desc], i) => {
     const sel = i === selectedRow
-    ctx.font = sel ? "bold 20px 'Courier New', monospace" : "18px 'Courier New', monospace"
+    ctx.font = font(sel ? 20 : 18, sel)
     ctx.fillStyle = sel ? '#f4c430' : '#c9c9d2'
     ctx.fillText(`${sel ? '> ' : '  '}${label}`, left, y)
     const valStr = `< ${String(outfit[key]).padStart(3)} >`
@@ -199,7 +200,7 @@ export function drawOutfitScreen(
     const valW = ctx.measureText(valStr).width
     addHit(`outfit-dec-${i}`, left + 250, y - 20, chW + 20, 28)
     addHit(`outfit-inc-${i}`, left + 260 + valW - chW - 10, y - 20, chW + 20, 28)
-    ctx.font = "13px 'Courier New', monospace"
+    ctx.font = font(13)
     ctx.fillStyle = '#7a7a86'
     ctx.fillText(desc, left + 24, y + 20)
     y += 58
@@ -210,7 +211,7 @@ export function drawOutfitScreen(
     `Spent: ${outfitCost(outfit)}    Sails as gold: ${remainingBudget(outfit, budget)}`,
     cx,
     y + 8,
-    "17px 'Courier New', monospace",
+    font(17),
     '#e0d18a',
   )
   const perDay = dailyAppetite(outfit.crew)
@@ -223,14 +224,14 @@ export function drawOutfitScreen(
     `${short ? '! ' : ''}A crew of ${outfit.crew} eats ~${Math.round(perDay)} provisions a day — ${larder}`,
     cx,
     y + 34,
-    "14px 'Courier New', monospace",
+    font(14),
     short ? '#c0504d' : '#7a9a7a',
   )
   const go = '↑↓ choose   ←→ adjust   ENTER set sail'
-  center(ctx, go, cx, y + 62, "15px 'Courier New', monospace", '#7fd17f')
-  centerHit(ctx, 'outfit-go', go, cx, y + 62, "15px 'Courier New', monospace")
+  center(ctx, go, cx, y + 62, font(15), '#7fd17f')
+  centerHit(ctx, 'outfit-go', go, cx, y + 62, font(15))
   if (replacesSave) {
-    center(ctx, 'Setting sail replaces your saved expedition. Esc to go back.', cx, y + 88, "14px 'Courier New', monospace", '#c9a94f')
+    center(ctx, 'Setting sail replaces your saved expedition. Esc to go back.', cx, y + 88, font(14), '#c9a94f')
   }
 }
 
@@ -289,14 +290,14 @@ export function drawStartScreen(
   const top = Math.max(28, Math.round((viewH - total) / 2))
 
   drawCompassRose(ctx, cx, top + 34, 34)
-  center(ctx, 'THE SEVEN CITIES OF GOLD', cx, top + 110, "bold 40px 'Courier New', monospace", '#f4c430')
-  center(ctx, 'A modern expedition into the New World', cx, top + 148, "18px 'Courier New', monospace", '#c9c9d2')
+  center(ctx, 'THE SEVEN CITIES OF GOLD', cx, top + 110, font(40, true), '#f4c430')
+  center(ctx, 'A modern expedition into the New World', cx, top + 148, font(18), '#c9c9d2')
 
-  const font = "16px 'Courier New', monospace"
+  const lineFont = font(16)
   let y = top + HEAD
   for (const l of lines) {
-    center(ctx, l.text, cx, y, font, l.color)
-    if (l.hit) centerHit(ctx, l.hit, l.text, cx, y, font)
+    center(ctx, l.text, cx, y, lineFont, l.color)
+    if (l.hit) centerHit(ctx, l.hit, l.text, cx, y, lineFont)
     y += LINE
   }
 
@@ -306,12 +307,12 @@ export function drawStartScreen(
   if (rows) {
     y += 18
     const best = bestScore(chronicle)
-    center(ctx, `— CHRONICLE OF EXPEDITIONS · best score ${best} —`, cx, y, "bold 15px 'Courier New', monospace", '#f4c430')
+    center(ctx, `— CHRONICLE OF EXPEDITIONS · best score ${best} —`, cx, y, font(15, true), '#f4c430')
     y += 24
     for (const e of chronicle.slice(0, rows)) {
       const verdict = e.won ? ' WON' : 'LOST'
       const line = `${verdict}   score ${String(e.score).padStart(5)}   ${String(e.gold).padStart(4)} gold   ${e.cities}/${CITIES_OF_GOLD} cities   day ${e.day}`
-      center(ctx, line, cx, y, "14px 'Courier New', monospace", e.won ? '#e0d18a' : '#8a8a94')
+      center(ctx, line, cx, y, font(14), e.won ? '#e0d18a' : '#8a8a94')
       y += 21
     }
   }
@@ -333,13 +334,13 @@ export function drawSpainScreen(
   const cx = viewW / 2
   drawCrest(ctx, cx, viewH / 2 - 208, 42)
   const title = rankTitle(career.banked)
-  center(ctx, 'SPAIN — THE COURT OF THE CROWN', cx, viewH / 2 - 170, "bold 32px 'Courier New', monospace", '#f4c430')
+  center(ctx, 'SPAIN — THE COURT OF THE CROWN', cx, viewH / 2 - 170, font(32, true), '#f4c430')
   center(
     ctx,
     `Voyage ${career.voyages} complete. You banked ${justBanked} gold with the Crown.`,
     cx,
     viewH / 2 - 128,
-    "16px 'Courier New', monospace",
+    font(16),
     '#e0d18a',
   )
   if (promoted) {
@@ -347,10 +348,10 @@ export function drawSpainScreen(
     ctx.save()
     ctx.shadowColor = 'rgba(127,209,127,0.9)'
     ctx.shadowBlur = 10 + 6 * Math.sin(t * 4)
-    center(ctx, `The Crown elevates you: ${title.toUpperCase()}!`, cx, viewH / 2 - 94, "bold 20px 'Courier New', monospace", '#7fd17f')
+    center(ctx, `The Crown elevates you: ${title.toUpperCase()}!`, cx, viewH / 2 - 94, font(20, true), '#7fd17f')
     ctx.restore()
   } else {
-    center(ctx, `Your rank: ${title}`, cx, viewH / 2 - 94, "18px 'Courier New', monospace", '#c9c9d2')
+    center(ctx, `Your rank: ${title}`, cx, viewH / 2 - 94, font(18), '#c9c9d2')
   }
   const idx = rankIndex(career.banked)
   const next = idx < RANKS.length - 1 ? RANKS[idx + 1] : null
@@ -361,7 +362,7 @@ export function drawSpainScreen(
   ]
   let y = viewH / 2 - 52
   for (const l of lines) {
-    center(ctx, l, cx, y, "15px 'Courier New', monospace", '#9a9aa6')
+    center(ctx, l, cx, y, font(15), '#9a9aa6')
     y += 26
   }
 
@@ -371,7 +372,7 @@ export function drawSpainScreen(
     const frac = Math.max(0, Math.min(1, (career.banked - prevMin) / (next.min - prevMin)))
     const bw = 320
     const bx = cx - bw / 2
-    center(ctx, `Next title: ${next.title} at ${next.min} gold`, cx, y + 6, "14px 'Courier New', monospace", '#8a8a94')
+    center(ctx, `Next title: ${next.title} at ${next.min} gold`, cx, y + 6, font(14), '#8a8a94')
     ctx.fillStyle = '#22222c'
     ctx.fillRect(bx, y + 14, bw, 10)
     ctx.fillStyle = '#c9a94f'
@@ -380,12 +381,12 @@ export function drawSpainScreen(
     ctx.lineWidth = 1
     ctx.strokeRect(bx + 0.5, y + 14.5, bw - 1, 9)
   } else {
-    center(ctx, 'No higher title remains — the Crown has run out of honors', cx, y + 12, "14px 'Courier New', monospace", '#c9a94f')
+    center(ctx, 'No higher title remains — the Crown has run out of honors', cx, y + 12, font(14), '#c9a94f')
   }
   y += 44
-  center(ctx, `The Crown will fund your next voyage: ${budgetFor(career.banked)} gold`, cx, y + 6, "15px 'Courier New', monospace", '#9a9aa6')
+  center(ctx, `The Crown will fund your next voyage: ${budgetFor(career.banked)} gold`, cx, y + 6, font(15), '#9a9aa6')
   // what happens to this voyage's stores; breaks at the semicolon on narrow screens
-  const leftoverFont = "13px 'Courier New', monospace"
+  const leftoverFont = font(13)
   const leftover = ['Leftover stores stay behind;', 'your caravels return to Palos and sail again from the landing.']
   ctx.font = leftoverFont
   const leftoverLines = ctx.measureText(leftover.join(' ')).width <= viewW - 96 ? [leftover.join(' ')] : leftover
@@ -393,8 +394,8 @@ export function drawSpainScreen(
   const goY = y + 56 + (leftoverLines.length - 1) * 17
 
   const go = 'Press ENTER to outfit your next voyage'
-  center(ctx, go, cx, goY, "16px 'Courier New', monospace", hovered('spain-go') ? '#a8f0a8' : '#7fd17f')
-  centerHit(ctx, 'spain-go', go, cx, goY, "16px 'Courier New', monospace")
+  center(ctx, go, cx, goY, font(16), hovered('spain-go') ? '#a8f0a8' : '#7fd17f')
+  centerHit(ctx, 'spain-go', go, cx, goY, font(16))
 
   // --- the harbor of Palos, waiting below the court -------------------------
   const hy = viewH - 132 // waterline
@@ -462,7 +463,7 @@ export function drawEncounter(
   const { x, y } = panel(ctx, viewW, viewH, w, H, hostile ? '#c0504d' : '#f4c430')
   const cx = viewW / 2
   const title = v.golden ? 'A CITY OF GOLD!' : 'A native village'
-  center(ctx, title, cx, y + 40, "bold 26px 'Courier New', monospace", v.golden ? '#f4c430' : '#e0d18a')
+  center(ctx, title, cx, y + 40, font(26, true), v.golden ? '#f4c430' : '#e0d18a')
 
   // the delegation: the chief comes out to meet you, people at his back
   const gy = y + 58
@@ -498,7 +499,7 @@ export function drawEncounter(
   ctx.strokeRect(x + 14.5, gy + 0.5, w - 29, gh)
 
   const moodColor = MOOD_COLOR[mood]
-  ctx.font = "15px 'Courier New', monospace"
+  ctx.font = font(15)
   ctx.textAlign = 'center'
   ctx.fillStyle = '#9a9aa6'
   const pre = `They appear `
@@ -529,34 +530,34 @@ export function drawEncounter(
       ctx.fillStyle = 'rgba(244,196,48,0.09)'
       ctx.fillRect(x + 20, ly - 20, w - 40, 30)
     }
-    ctx.font = "bold 17px 'Courier New', monospace"
+    ctx.font = font(17, true)
     ctx.fillStyle = disabled ? '#5a5a64' : hov ? '#ffe27a' : '#f4c430'
     ctx.fillText(`[${k}] ${verb}`, x + 32, ly)
     ctx.fillStyle = disabled ? '#5a5a64' : hov ? '#f0f0f4' : '#c9c9d2'
     const text = disabled ? instead : desc
-    ctx.font = "14px 'Courier New', monospace"
+    ctx.font = font(14)
     // the description runs from x + 150 to the panel's inner edge; step down rather than squeeze
-    if (ctx.measureText(text).width > w - 170) ctx.font = "13px 'Courier New', monospace"
+    if (ctx.measureText(text).width > w - 170) ctx.font = font(13)
     ctx.fillText(text, x + 150, ly)
     if (!disabled) addHit(`enc-${k}`, x + 20, ly - 20, w - 40, 30)
     ly += 34
   }
   const esc = 'Esc — walk away'
-  center(ctx, esc, cx, y + H - 22, "14px 'Courier New', monospace", hovered('enc-esc') ? '#c9c9d2' : '#7a7a86')
-  centerHit(ctx, 'enc-esc', esc, cx, y + H - 22, "14px 'Courier New', monospace")
+  center(ctx, esc, cx, y + H - 22, font(14), hovered('enc-esc') ? '#c9c9d2' : '#7a7a86')
+  centerHit(ctx, 'enc-esc', esc, cx, y + H - 22, font(14))
 }
 
 /**
  * Transient notice as a slim banner under the HUD — it informs without
  * hiding the ship, the storm, or the village it is talking about.
  */
-export function drawResult(ctx: CanvasRenderingContext2D, viewW: number, _viewH: number, text: string, top = 64): void {
+export function drawResult(ctx: CanvasRenderingContext2D, viewW: number, text: string, top = 64): void {
   // long notices step the font down to fit the view before anything is clipped
   let size = 16
-  ctx.font = `${size}px 'Courier New', monospace`
+  ctx.font = font(size)
   while (size > 11 && ctx.measureText(text).width + 48 > viewW - 16) {
     size--
-    ctx.font = `${size}px 'Courier New', monospace`
+    ctx.font = font(size)
   }
   const w = Math.min(ctx.measureText(text).width + 48, viewW - 16)
   const x = (viewW - w) / 2
@@ -586,8 +587,8 @@ export function drawGameOver(
   viewH: number,
   won: boolean,
   score: number,
-  career?: Career,
-  summary?: ExpeditionSummary,
+  career: Career,
+  summary: ExpeditionSummary,
   t = 0,
 ): void {
   // victory keeps a little warmth in the dark; defeat goes cold and red
@@ -607,7 +608,7 @@ export function drawGameOver(
   const cx = viewW / 2
 
   // the seven cities, tallied: gold for each one found, ash for the rest
-  const cities = summary?.cities ?? (won ? CITIES_OF_GOLD : 0)
+  const cities = summary.cities
   const arcY = viewH / 2 - 128
   const mid = (CITIES_OF_GOLD - 1) / 2
   for (let i = 0; i < CITIES_OF_GOLD; i++) {
@@ -642,36 +643,32 @@ export function drawGameOver(
     ctx.save()
     ctx.shadowColor = 'rgba(244,196,48,0.8)'
     ctx.shadowBlur = 12 + 5 * Math.sin(t * 2.6)
-    center(ctx, 'THE SEVEN CITIES ARE YOURS', cx, viewH / 2 - 40, "bold 36px 'Courier New', monospace", '#f4c430')
+    center(ctx, 'THE SEVEN CITIES ARE YOURS', cx, viewH / 2 - 40, font(36, true), '#f4c430')
     ctx.restore()
-    center(ctx, 'Glory and gold beyond measure.', cx, viewH / 2 - 6, "18px 'Courier New', monospace", '#e0d18a')
+    center(ctx, 'Glory and gold beyond measure.', cx, viewH / 2 - 6, font(18), '#e0d18a')
   } else {
-    center(ctx, 'THE EXPEDITION IS LOST', cx, viewH / 2 - 40, "bold 36px 'Courier New', monospace", '#c0504d')
-    center(ctx, 'Your crew will chart no more. The sea keeps its secrets.', cx, viewH / 2 - 6, "18px 'Courier New', monospace", '#c9c9d2')
+    center(ctx, 'THE EXPEDITION IS LOST', cx, viewH / 2 - 40, font(36, true), '#c0504d')
+    center(ctx, 'Your crew will chart no more. The sea keeps its secrets.', cx, viewH / 2 - 6, font(18), '#c9c9d2')
   }
 
-  center(ctx, `Final score: ${score}`, cx, viewH / 2 + 40, "22px 'Courier New', monospace", '#ffffff')
-  if (summary) {
-    // the reckoning, item by item — how the score came to be
-    const p = summary.parts
-    const terms = [
-      `${p.gold} gold`,
-      `+${p.charted} lands charted`,
-      `+${p.villages} peoples met`,
-      `−${Math.abs(p.days)} for ${summary.day} ${summary.day === 1 ? 'day' : 'days'} at large`,
-    ]
-    if (career && career.banked > 0) terms.push(`+${career.banked} banked`)
-    const font = "13px 'Courier New', monospace"
-    ctx.font = font
-    const wide = terms.join('   ·   ')
-    const line = ctx.measureText(wide).width <= viewW - 48 ? wide : terms.join(' · ')
-    center(ctx, line, cx, viewH / 2 + 66, font, '#8a8a94')
-  }
-  if (career) {
-    const line = `${rankTitle(career.banked)} · ${career.voyages} ${career.voyages === 1 ? 'voyage' : 'voyages'} completed · ${career.banked} gold banked`
-    center(ctx, line, cx, viewH / 2 + 94, "15px 'Courier New', monospace", '#c9a94f')
-  }
+  center(ctx, `Final score: ${score}`, cx, viewH / 2 + 40, font(22), '#ffffff')
+  // the reckoning, item by item — how the score came to be
+  const p = summary.parts
+  const terms = [
+    `${p.gold} gold`,
+    `+${p.charted} lands charted`,
+    `+${p.villages} peoples met`,
+    `−${Math.abs(p.days)} for ${summary.day} ${summary.day === 1 ? 'day' : 'days'} at large`,
+  ]
+  if (career.banked > 0) terms.push(`+${career.banked} banked`)
+  const termsFont = font(13)
+  ctx.font = termsFont
+  const wide = terms.join('   ·   ')
+  const reckoning = ctx.measureText(wide).width <= viewW - 48 ? wide : terms.join(' · ')
+  center(ctx, reckoning, cx, viewH / 2 + 66, termsFont, '#8a8a94')
+  const standing = `${rankTitle(career.banked)} · ${career.voyages} ${career.voyages === 1 ? 'voyage' : 'voyages'} completed · ${career.banked} gold banked`
+  center(ctx, standing, cx, viewH / 2 + 94, font(15), '#c9a94f')
   const go = 'Press ENTER for a new expedition'
-  center(ctx, go, cx, viewH / 2 + 132, "16px 'Courier New', monospace", hovered('over-restart') ? '#a8f0a8' : '#7fd17f')
-  centerHit(ctx, 'over-restart', go, cx, viewH / 2 + 132, "16px 'Courier New', monospace")
+  center(ctx, go, cx, viewH / 2 + 132, font(16), hovered('over-restart') ? '#a8f0a8' : '#7fd17f')
+  centerHit(ctx, 'over-restart', go, cx, viewH / 2 + 132, font(16))
 }

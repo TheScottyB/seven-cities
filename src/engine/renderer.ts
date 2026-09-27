@@ -15,10 +15,15 @@ import { paperPattern, type DeckleSet } from '../art/paper'
 
 export interface RenderCtx {
   ctx: CanvasRenderingContext2D
+  /** the world pass: device px, drawn under the identity transform; the minimap: CSS px */
   viewW: number
   viewH: number
   tileset: Tileset
-  /** integer pixel zoom for the world view (UI overlays stay unzoomed) */
+  /**
+   * Viewport pixels per art pixel. The world pass gets an integer in device px;
+   * the minimap, drawn with the UI in CSS px, gets that zoom divided by the
+   * device pixel ratio so its view rectangle still covers the same tiles.
+   */
   zoom: number
 }
 
@@ -378,11 +383,11 @@ export function renderMinimap(
   fog: Fog,
   explorer: Explorer,
   villages: Village[],
-  ships: { x: number; y: number }[] = [],
-  outposts: Outpost[] = [],
-  top = 52,
-  cam?: Camera,
-  relief?: Relief,
+  ships: { x: number; y: number }[],
+  outposts: Outpost[],
+  top: number,
+  cam: Camera,
+  relief: Relief,
 ): void {
   const { ctx, viewW } = rc
   const size = MINI_SIZE
@@ -394,12 +399,10 @@ export function renderMinimap(
   ctx.fillStyle = '#221c13'
   ctx.fillRect(px - 2, py - 2, size + 4, size + 4)
 
-  if (relief) {
-    if (!miniCache || miniCache.seed !== map.seed || fog.revealedCount - miniCache.revealed > 256) {
-      miniCache = { canvas: buildMini(map, fog, relief), revealed: fog.revealedCount, seed: map.seed }
-    }
-    ctx.drawImage(miniCache.canvas, px, py)
+  if (!miniCache || miniCache.seed !== map.seed || fog.revealedCount - miniCache.revealed > 256) {
+    miniCache = { canvas: buildMini(map, fog, relief), revealed: fog.revealedCount, seed: map.seed }
   }
+  ctx.drawImage(miniCache.canvas, px, py)
 
   ctx.strokeStyle = 'rgba(244,196,48,0.5)'
   ctx.lineWidth = 1
@@ -418,18 +421,16 @@ export function renderMinimap(
   ctx.fillStyle = '#e8d8a0'
   for (const o of outposts) ctx.fillRect(px + o.x * scale - 1, py + o.y * scale - 1, 3, 3)
 
-  if (cam) {
-    const vwTiles = rc.viewW / (TILE_PX * rc.zoom)
-    const vhTiles = rc.viewH / (TILE_PX * rc.zoom)
-    ctx.strokeStyle = 'rgba(232,232,238,0.65)'
-    ctx.lineWidth = 1
-    ctx.strokeRect(
-      px + (cam.x - vwTiles / 2) * scale,
-      py + (cam.y - vhTiles / 2) * scale,
-      vwTiles * scale,
-      vhTiles * scale,
-    )
-  }
+  const vwTiles = rc.viewW / (TILE_PX * rc.zoom)
+  const vhTiles = rc.viewH / (TILE_PX * rc.zoom)
+  ctx.strokeStyle = 'rgba(232,232,238,0.65)'
+  ctx.lineWidth = 1
+  ctx.strokeRect(
+    px + (cam.x - vwTiles / 2) * scale,
+    py + (cam.y - vhTiles / 2) * scale,
+    vwTiles * scale,
+    vhTiles * scale,
+  )
 }
 
 /** Drop the cached chart when a new world is generated. */

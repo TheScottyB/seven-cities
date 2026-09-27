@@ -4,6 +4,7 @@ import type { Tileset } from '../art/tileset'
 import { DECORS, tileIndex } from '../art/relief'
 import { TILE } from '../world/tiles'
 import { drawExplorerSprite, type SpriteBank } from '../art/spritebank'
+import { font } from './font'
 import {
   drawVillager,
   drawChief,
@@ -25,22 +26,25 @@ export function drawWalkin(
   viewH: number,
   scene: WalkinScene,
   tileset: Tileset,
-  hostileNote: string,
-  t = 0,
+  moodNote: string,
   sprites: SpriteBank,
+  t = 0,
 ): void {
   ctx.fillStyle = '#0a0a12'
   ctx.fillRect(0, 0, viewW, viewH)
 
   // integer scaling only — the walk-in draws the biggest sprites in the game,
-  // and a fractional factor is exactly what softens them
-  const fit = Math.min(Math.floor((viewW - 24) / scene.w), Math.floor((viewH - 90) / scene.h))
-  const SCENE_PX = 16 * Math.max(1, Math.floor(fit / 16))
+  // and a fractional factor is exactly what softens them. The view is in CSS
+  // px under the caller's device-pixel-ratio transform, so the scale and the
+  // origin are chosen in DEVICE px and converted back.
+  const dpr = ctx.getTransform().a || 1
+  const fit = Math.min(Math.floor(((viewW - 24) * dpr) / scene.w), Math.floor(((viewH - 90) * dpr) / scene.h))
+  const SCENE_PX = (16 * Math.max(1, Math.floor(fit / 16))) / dpr
   const sw = scene.w * SCENE_PX
   const sh = scene.h * SCENE_PX
   // integer origin + nearest-neighbour scaling: no seams between ground tiles
-  const ox = Math.round((viewW - sw) / 2)
-  const oy = Math.round((viewH - sh) / 2)
+  const ox = Math.round(((viewW - sw) / 2) * dpr) / dpr
+  const oy = Math.round(((viewH - sh) / 2) * dpr) / dpr
   const sx = (x: number) => ox + x * SCENE_PX
   const sy = (y: number) => oy + y * SCENE_PX
 
@@ -115,7 +119,7 @@ export function drawWalkin(
   // so the walk-in shows off the sprite work rather than softening it
   const scale = SCENE_PX / 16
   ctx.save()
-  ctx.translate(Math.round(sx(scene.px)), Math.round(sy(scene.py)))
+  ctx.translate(Math.round(sx(scene.px) * dpr) / dpr, Math.round(sy(scene.py) * dpr) / dpr)
   ctx.scale(scale, scale)
   ctx.imageSmoothingEnabled = false
   drawExplorerSprite(ctx, sprites, 0, 7, scene.facing, scene.moving ? scene.gait : 0)
@@ -171,8 +175,8 @@ export function drawWalkin(
   ctx.restore()
 
   // the mood, spoken plainly in a banner above the scene
-  ctx.font = "16px 'Courier New', monospace"
-  const noteW = Math.min(ctx.measureText(hostileNote).width + 44, viewW - 16)
+  ctx.font = font(16)
+  const noteW = Math.min(ctx.measureText(moodNote).width + 44, viewW - 16)
   const nx = (viewW - noteW) / 2
   const ny = oy - 44
   ctx.fillStyle = 'rgba(10,12,22,0.88)'
@@ -184,10 +188,10 @@ export function drawWalkin(
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillStyle = scene.hostile ? '#e08a86' : '#c9c9d2'
-  ctx.fillText(hostileNote, viewW / 2, ny + 16)
+  ctx.fillText(moodNote, viewW / 2, ny + 16)
 
   ctx.fillStyle = '#7a7a86'
-  ctx.font = "14px 'Courier New', monospace"
+  ctx.font = font(14)
   ctx.fillText('Walk to the chief to parley — or walk out the way you came (Esc leaves)', viewW / 2, oy + sh + 30)
   ctx.textAlign = 'left'
   ctx.textBaseline = 'alphabetic'

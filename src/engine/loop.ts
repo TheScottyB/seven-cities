@@ -7,12 +7,14 @@ export interface LoopOptions {
 
 /**
  * Fixed-timestep game loop. `update(dt)` runs at a steady 60Hz (accumulator
- * pattern) so game logic is frame-rate independent; `render()` runs once per
- * animation frame. A throw never stops the next frame from being scheduled.
+ * pattern) so game logic is frame-rate independent; `render(alpha)` runs once
+ * per animation frame, where alpha in [0, 1) is how far the clock has got
+ * toward the next step, for drawing between the last two states on displays
+ * faster than 60Hz. A throw never stops the next frame from being scheduled.
  */
 export function startLoop(
   update: (dt: number) => void,
-  render: () => void,
+  render: (alpha: number) => void,
   opts: LoopOptions = {},
 ): () => void {
   const STEP = 1 / 60
@@ -49,7 +51,7 @@ export function startLoop(
       fail(err)
     }
     try {
-      render()
+      render(acc / STEP)
     } catch (err) {
       fail(err)
     }

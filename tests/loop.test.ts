@@ -36,6 +36,27 @@ test('runs fixed steps from accumulated time', () => {
   expect(render).toHaveBeenCalledTimes(1)
 })
 
+test('render receives the fraction of a step still banked', () => {
+  const render = vi.fn()
+  startLoop(() => {}, render)
+  tick(50) // exactly 3 steps, ~nothing banked
+  tick(1000 / 60 / 2) // half a step
+  tick(0) // a second frame inside the same step
+  for (const [alpha] of render.mock.calls) {
+    expect(alpha).toBeGreaterThanOrEqual(0)
+    expect(alpha).toBeLessThan(1)
+  }
+  expect(render.mock.calls[1][0]).toBeCloseTo(0.5, 5)
+  expect(render.mock.calls[2][0]).toBeCloseTo(0.5, 5)
+})
+
+test('while paused, render receives alpha 0', () => {
+  const render = vi.fn()
+  startLoop(() => {}, render, { isPaused: () => true })
+  tick(30)
+  expect(render).toHaveBeenCalledWith(0)
+})
+
 test('a throwing update reports once, resets the accumulator and keeps going', () => {
   let throwNext = true
   const update = vi.fn(() => {
