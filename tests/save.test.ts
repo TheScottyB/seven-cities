@@ -124,7 +124,19 @@ const mutations: Mutation[] = [
   ['ship y missing', (d) => { delete d.ships[0].y }],
   ['phase unknown', (d) => { d.phase = 'docked' }],
   ['mapHash missing', (d) => { delete d.mapHash }],
+  ['fog that is not base64', (d) => { d.fogSeenB64 = 'not base64!' }],
+  ['a null village entry', (d) => { d.villages = [null] }],
+  ['a village entry that is a number', (d) => { d.villages = [3] }],
+  ['an outpost without stock', (d) => { d.outposts = [{ x: 1, y: 1 }] }],
+  ['a null outpost', (d) => { d.outposts = [null] }],
 ]
+
+test('populated village and outpost entries still load', () => {
+  const d = validSave()
+  d.villages = [{ visited: true, depleted: false, temperament: 0.5 }, {}]
+  d.outposts = [{ x: 3, y: 4, stock: 12 }]
+  expect(deserializeSave(JSON.stringify(d))).not.toBeNull()
+})
 
 test.each(mutations)('rejects a save with %s', (_name, mutate) => {
   const d = validSave()

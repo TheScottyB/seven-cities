@@ -124,11 +124,26 @@ const MAX_SHIPS = LIMITS.ships[1]
 const isFiniteXY = (p: { x?: unknown; y?: unknown } | null | undefined) =>
   !!p && Number.isFinite(p.x) && Number.isFinite(p.y)
 
+const isOutpost = (o: { x?: unknown; y?: unknown; stock?: unknown } | null | undefined) =>
+  !!o && isFiniteXY(o) && Number.isFinite(o.stock)
+
+/** restore reads visited, depleted and temperament defensively, so an entry need only be an object */
+const isVillageEntry = (v: unknown) => !!v && typeof v === 'object'
+
+const isBase64 = (b64: string) => {
+  try {
+    atob(b64)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function deserializeSave(json: string): SaveData | null {
   try {
     const d = JSON.parse(json)
     if (!d || typeof d !== 'object' || d.version !== SAVE_VERSION) return null
-    if (typeof d.seedStr !== 'string' || typeof d.fogSeenB64 !== 'string') return null
+    if (typeof d.seedStr !== 'string' || typeof d.fogSeenB64 !== 'string' || !isBase64(d.fogSeenB64)) return null
     if (!Number.isFinite(d.mapHash) || (d.phase !== 'at-sea' && d.phase !== 'refit')) return null
     if (!d.state || typeof d.state !== 'object') return null
     if (STATE_NUMBERS.some((k) => !Number.isFinite(d.state[k])) || !STATUSES.includes(d.state.status)) return null
@@ -136,9 +151,9 @@ export function deserializeSave(json: string): SaveData | null {
     if (!Array.isArray(d.ships) || d.ships.length < 1 || d.ships.length > MAX_SHIPS || !d.ships.every(isFiniteXY)) return null
     if (!Number.isInteger(d.activeShip) || d.activeShip < 0 || d.activeShip >= d.ships.length) return null
     if (typeof d.sailing !== 'boolean') return null
-    if (!Array.isArray(d.outposts)) return null
+    if (!Array.isArray(d.outposts) || !d.outposts.every(isOutpost)) return null
     if (!d.career || typeof d.career.banked !== 'number' || typeof d.career.voyages !== 'number') return null
-    if (!Array.isArray(d.villages)) return null
+    if (!Array.isArray(d.villages) || !d.villages.every(isVillageEntry)) return null
     return d as SaveData
   } catch {
     return null
