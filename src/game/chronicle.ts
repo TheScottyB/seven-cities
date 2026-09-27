@@ -1,6 +1,6 @@
 /**
  * The Chronicle: a persistent record of past expeditions, shown on the title
- * screen. Pure data logic — storage happens in main.ts via localStorage.
+ * screen. Pure data logic — storage happens in src/app/storage.ts via localStorage.
  */
 export interface ChronicleEntry {
   seedStr: string

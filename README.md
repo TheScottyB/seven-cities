@@ -132,7 +132,10 @@ src/
   art/      procedural tileset, terrain relief, sprites and paper, baked at boot
   engine/   loop, input, camera, renderer
   ui/       canvas-drawn HUD, screens, parley panel, walk-in scene, click regions
-  main.ts   app shell: screen flow, saves, audio wiring, the dev-only __dbg hook
+  app/      the shell's seams: storage (localStorage), viewport (canvas sizing),
+            lifecycle (pure pause/crash/gesture rules), devhooks (dev-only audio probes)
+  main.ts   app shell: screen flow, per-screen update/render, saves, audio wiring,
+            and the dev-only __dbg hook
 tests/      Vitest unit tests, run in Node
 scripts/    check-dist.mjs, the production-bundle check
 docs/plans/ historical design notes, superseded by the code
@@ -164,7 +167,7 @@ npm run check       # typecheck + tests + build + dev-hook strip check (what CI 
 ```
 
 Settled rules:
-- Pure modules (`world/`, `game/`, the audio director, scene and score) stay DOM-free.
+- Pure modules (`world/`, `game/`, `app/lifecycle`, the audio director, scene and score) stay DOM-free.
 - Zero asset files: art and sound are generated in code.
 - Pixel art renders at an integer zoom with smoothing off.
 - Composed music plays on the title screen only; the rest is ambient soundscape.
