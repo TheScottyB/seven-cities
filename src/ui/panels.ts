@@ -234,6 +234,13 @@ export function drawOutfitScreen(
   }
 }
 
+export interface StartScreenOptions {
+  /** a quiet line on how to get sound, or how to mute it */
+  soundLine?: string
+  /** touch-only device: ask for a keyboard instead of offering a run */
+  needKeyboard?: boolean
+}
+
 export function drawStartScreen(
   ctx: CanvasRenderingContext2D,
   viewW: number,
@@ -241,16 +248,15 @@ export function drawStartScreen(
   seed: string,
   hasSave: boolean,
   chronicle: ChronicleEntry[] = [],
+  opts: StartScreenOptions = {},
 ): void {
   ctx.fillStyle = '#0a0a12'
   ctx.fillRect(0, 0, viewW, viewH)
   drawFrame(ctx, viewW, viewH)
   const cx = viewW / 2
-  drawCompassRose(ctx, cx, viewH / 2 - 196, 34)
-  center(ctx, 'THE SEVEN CITIES OF GOLD', cx, viewH / 2 - 120, "bold 40px 'Courier New', monospace", '#f4c430')
-  center(ctx, 'A modern expedition into the New World', cx, viewH / 2 - 82, "18px 'Courier New', monospace", '#c9c9d2')
 
-  const lines = [
+  const dim = '#9a9aa6'
+  const lines: { text: string; color: string; hit?: string }[] = [
     'Chart the unknown coast and interior. Find native villages —',
     'trade with them, win them over with gifts, or raid them for gold.',
     'Manage your food, crew, and morale. Discover all seven',
@@ -259,28 +265,50 @@ export function drawStartScreen(
     'MOVE  W A S D / arrows      INTERACT  E / Space      CHOOSE  1 2 3',
     'FORT  F      SOUND  M      MENU  Esc',
     '',
-    `Seed: ${seed}   (R rolls a new world)`,
-    '',
-    'Press ENTER to outfit a new expedition',
-  ]
-  if (hasSave) lines.push('Press C to continue your last expedition')
-  let y = viewH / 2 - 30
+  ].map((text) => ({ text, color: dim }))
+  lines.push({ text: `Seed: ${seed}   (R rolls a new world)`, color: dim, hit: 'start-reroll' })
+  lines.push({ text: '', color: dim })
+  if (opts.needKeyboard) {
+    // no start regions at all: a tap must not begin a run it cannot play
+    lines.push({ text: 'This expedition needs a keyboard —', color: '#e0b34f' })
+    lines.push({ text: 'open it in a desktop browser', color: '#e0b34f' })
+    lines.push({ text: 'I have a keyboard', color: '#7fd17f', hit: 'start-keyboard' })
+  } else {
+    lines.push({ text: 'Press ENTER to outfit a new expedition', color: '#7fd17f', hit: 'start-new' })
+    if (hasSave) lines.push({ text: 'Press C to continue your last expedition', color: '#f4c430', hit: 'start-continue' })
+  }
+  if (opts.soundLine) lines.push({ text: opts.soundLine, color: '#7a7a86' })
+
+  // measure the whole block, then centre it; only the Chronicle gives up rows
+  const HEAD = 200 // compass top to the first line's baseline
+  const LINE = 26
+  const ROW = 21
+  const CHRON_HEAD = 18 + 24 // gap, then heading to first row
+  const wantRows = Math.min(4, chronicle.length)
+  const total = HEAD + lines.length * LINE + (wantRows ? CHRON_HEAD + wantRows * ROW : 0)
+  const top = Math.max(28, Math.round((viewH - total) / 2))
+
+  drawCompassRose(ctx, cx, top + 34, 34)
+  center(ctx, 'THE SEVEN CITIES OF GOLD', cx, top + 110, "bold 40px 'Courier New', monospace", '#f4c430')
+  center(ctx, 'A modern expedition into the New World', cx, top + 148, "18px 'Courier New', monospace", '#c9c9d2')
+
+  const font = "16px 'Courier New', monospace"
+  let y = top + HEAD
   for (const l of lines) {
-    const color = l.startsWith('Press ENTER') ? '#7fd17f' : l.startsWith('Press C') ? '#f4c430' : '#9a9aa6'
-    center(ctx, l, cx, y, "16px 'Courier New', monospace", color)
-    if (l.startsWith('Press ENTER')) centerHit(ctx, 'start-new', l, cx, y, "16px 'Courier New', monospace")
-    else if (l.startsWith('Press C')) centerHit(ctx, 'start-continue', l, cx, y, "16px 'Courier New', monospace")
-    else if (l.startsWith('Seed:')) centerHit(ctx, 'start-reroll', l, cx, y, "16px 'Courier New', monospace")
-    y += 26
+    center(ctx, l.text, cx, y, font, l.color)
+    if (l.hit) centerHit(ctx, l.hit, l.text, cx, y, font)
+    y += LINE
   }
 
-  // the Chronicle: past expeditions, newest first
-  if (chronicle.length) {
+  // the Chronicle: past expeditions, newest first, as many rows as fit
+  const firstRow = y + CHRON_HEAD
+  const rows = Math.max(0, Math.min(wantRows, Math.floor((viewH - 28 - firstRow + ROW) / ROW)))
+  if (rows) {
     y += 18
     const best = bestScore(chronicle)
     center(ctx, `— CHRONICLE OF EXPEDITIONS · best score ${best} —`, cx, y, "bold 15px 'Courier New', monospace", '#f4c430')
     y += 24
-    for (const e of chronicle.slice(0, 4)) {
+    for (const e of chronicle.slice(0, rows)) {
       const verdict = e.won ? ' WON' : 'LOST'
       const line = `${verdict}   score ${String(e.score).padStart(5)}   ${String(e.gold).padStart(4)} gold   ${e.cities}/7 cities   day ${e.day}`
       center(ctx, line, cx, y, "14px 'Courier New', monospace", e.won ? '#e0d18a' : '#8a8a94')

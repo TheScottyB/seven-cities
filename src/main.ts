@@ -14,6 +14,10 @@
  * is marked 'refit' and resumes on the outfit screen. Only the tab that last
  * wrote SAVE_KEY (or claimed it through OWNER_KEY) keeps saving (see saveOwner).
  *
+ * Lifecycle: a throw from the loop leaves only a recovery card (Esc reloads,
+ * X discards the save); blur or hide mid-expedition pauses until the next key
+ * or click, which is swallowed; a hidden tab saves and suspends audio.
+ *
  * The window.__dbg hook at the bottom exists in DEV builds only.
  */
 import { generateMap } from './world/mapgen'
@@ -68,6 +72,7 @@ const SAVE_KEY = 'seven-cities-save'
 const CHRONICLE_KEY = 'seven-cities-chronicle'
 /** A fresh token written when a tab takes over the save; storage events only fire on a changed value. */
 const OWNER_KEY = 'seven-cities-save-owner'
+const AUDIO_KEY = 'seven-cities-audio'
 
 const canvas = document.getElementById('game') as HTMLCanvasElement
 const ctx = canvas.getContext('2d')!
@@ -143,6 +148,75 @@ const player = new AudioPlayer()
 let audioEvents: GameEvent[] = []
 let prevSnap: AudioSnapshot | null = null
 
+/** Set by the loop's error handler; the canvas shows only the recovery card from then on. */
+let crashed = false
+/** Blur or hide during play: the simulation holds until the next key or click. */
+let paused = false
+/** Any key or click so far; the title stops asking for one. */
+let gestured = false
+/** The first unlock has happened (or a bot primed audio); only that one is swallowed. */
+let audioPrimed = false
+/** The pending gesture struck up the title theme; a start action it carried is dropped. */
+let swallowStart = false
+/** A phone or tablet with no keyboard: the title asks for one before offering a run. */
+let touchOnly =
+  typeof matchMedia === 'function' &&
+  matchMedia('(pointer: coarse)').matches &&
+  !matchMedia('(any-pointer: fine)').matches &&
+  navigator.maxTouchPoints > 0
+/** DEV: a bot drives through __dbg, so blur/hide pauses would only eat its keys. */
+let driven = false
+
+function loadMuted(): boolean {
+  try {
+    return localStorage.getItem(AUDIO_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function storeMuted(m: boolean) {
+  try {
+    localStorage.setItem(AUDIO_KEY, JSON.stringify(m))
+  } catch {
+    /* the choice lasts for this tab only */
+  }
+}
+
+let muted = loadMuted()
+player.setMuted(muted)
+
+/** Every key or click offers the browser audio; the first success is remembered. */
+function onGesture() {
+  gestured = true
+  askPersist()
+  if (crashed) return // the card keeps audio silent
+  if (player.unlock() && !audioPrimed) {
+    audioPrimed = true
+    swallowStart = true
+  }
+}
+
+/** Pause for blur/hide, only mid-expedition; true when this call paused. */
+function pauseForFocus(): boolean {
+  if (paused || crashed || driven) return false
+  if (screen !== 'playing' && screen !== 'walkin') return false
+  paused = true
+  return true
+}
+
+/** The key or click that ends a pause does nothing else. */
+function unpause() {
+  paused = false
+  input.endFrame()
+  clicks.length = 0
+}
+
+function saveIfPlaying() {
+  if (crashed) return // the state that threw is not worth keeping
+  if (screen === 'playing' || screen === 'walkin') saveGame()
+}
+
 let persistAsked = false
 /** Ask once, on the first gesture, that the browser not evict our saves. */
 function askPersist() {
@@ -154,10 +228,34 @@ function askPersist() {
     /* unsupported: saves still work, just evictable */
   }
 }
-window.addEventListener('keydown', () => {
-  player.unlock()
-  askPersist()
+// registered after Input's own listener, so the key is already queued when a pause drops it
+window.addEventListener('keydown', (e) => {
+  touchOnly = false
+  onGesture()
+  if (crashed) {
+    // update() no longer runs; the recovery card's two keys are read here
+    if (e.key === 'Escape') location.reload()
+    else if (e.key?.toLowerCase() === 'x') {
+      clearSave()
+      location.reload()
+    }
+    return
+  }
+  if (paused) unpause()
 })
+window.addEventListener('blur', () => {
+  if (pauseForFocus() && screen === 'playing') saveGame()
+})
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    pauseForFocus()
+    saveIfPlaying()
+    player.suspend()
+  } else if (!crashed) {
+    player.resume()
+  }
+})
+window.addEventListener('pagehide', saveIfPlaying)
 window.addEventListener('storage', (e) => {
   if (e.key === SAVE_KEY || e.key === OWNER_KEY) {
     saveOwner = false
@@ -175,8 +273,12 @@ function canvasPoint(e: MouseEvent): { x: number; y: number } {
   }
 }
 canvas.addEventListener('click', (e) => {
-  player.unlock()
-  askPersist()
+  onGesture()
+  if (crashed) return
+  if (paused) {
+    unpause()
+    return
+  }
   const p = canvasPoint(e)
   const id = hitAt(p.x, p.y)
   if (id) clicks.push(id)
@@ -540,15 +642,19 @@ function nearestVillage(): Village | null {
 
 function update(dt: number) {
   const click = clicks.shift() ?? null
+  const firstUnlock = swallowStart
+  swallowStart = false
   if (input.pressed('m')) {
-    const muted = player.toggleMute()
+    muted = player.toggleMute()
+    storeMuted(muted)
     flash = { text: muted ? 'Sound muted (M to unmute)' : 'Sound on', t: 1.5 }
   }
+  // the one place a toast ages, whatever screen shows it
+  if (flash.t > 0) flash.t -= dt * timeScale
 
   if (screen === 'walkin' && walkin && walkinVillage) {
     const { dx, dy } = input.axis()
     const status = tickScene(walkin, dx, dy, dt * timeScale)
-    if (flash.t > 0) flash.t -= dt * timeScale
     if (input.pressed('esc') || status === 'left') {
       screen = 'playing'
       walkin = null
@@ -570,8 +676,12 @@ function update(dt: number) {
   }
 
   if (screen === 'start') {
-    if (flash.t > 0) flash.t -= dt * timeScale
-    if (input.pressed('enter') || click === 'start-new') {
+    // while a touch-only device is gated, taps on the (unregistered) start lines are ignored
+    const startNew = input.pressed('enter') || (!touchOnly && click === 'start-new')
+    const startContinue = !startNew && (input.pressed('c') || (!touchOnly && click === 'start-continue'))
+    if ((startNew || startContinue) && firstUnlock) {
+      // this press struck up the title theme; stay so it is heard, the next press proceeds
+    } else if (startNew) {
       outfitReplacesSave = titleInfo?.hasSave ?? loadSave() !== null
       resetSession()
       claimSave(false)
@@ -579,12 +689,14 @@ function update(dt: number) {
       outfitRow = 0
       flash = { text: '', t: 0 }
       screen = 'outfit'
-    } else if (input.pressed('c') || click === 'start-continue') {
+    } else if (startContinue) {
       continueExpedition()
     } else if (input.pressed('r') || click === 'start-reroll') {
       // roll a new world to explore
       world = newWorld(String(1 + (Math.floor(performance.now() * 7) % 99999)))
       resumable = false
+    } else if (click === 'start-keyboard') {
+      touchOnly = false
     }
     input.endFrame()
     pumpAudio()
@@ -605,9 +717,9 @@ function update(dt: number) {
       outfitRow = Number(click.slice('outfit-inc-'.length))
       outfit = adjustOutfit(outfit, fields[outfitRow], 1, budget)
     }
-    if (input.pressed('left')) outfit = adjustOutfit(outfit, fields[outfitRow], -1, budget)
-    if (input.pressed('right')) outfit = adjustOutfit(outfit, fields[outfitRow], 1, budget)
-    if (input.pressed('enter') || click === 'outfit-go') {
+    if (input.pressedOrRepeat('left')) outfit = adjustOutfit(outfit, fields[outfitRow], -1, budget)
+    if (input.pressedOrRepeat('right')) outfit = adjustOutfit(outfit, fields[outfitRow], 1, budget)
+    if (input.pressed('enter') || (!touchOnly && click === 'outfit-go')) {
       if (nextVoyage) embarkVoyage()
       else embark()
     } else if (input.pressed('esc') && !nextVoyage) screen = 'start'
@@ -646,7 +758,6 @@ function update(dt: number) {
   // playing
   const sdt = dt * timeScale
   const { map, fog, state, explorer } = world
-  if (flash.t > 0) flash.t -= sdt
 
   if (encounter) {
     if (input.pressed('1') || click === 'enc-1') chooseEncounter('trade')
@@ -704,6 +815,7 @@ function update(dt: number) {
         career = bankGold(career, state.gold)
         state.gold = 0
         promoted = rankIndex(career.banked) > before
+        flash = { text: '', t: 0 } // the court screen shows toasts now; none from the voyage
         screen = 'spain'
         saveGame('refit')
       } else if (world.sailing) {
@@ -822,17 +934,23 @@ function render() {
 
   if (screen === 'start') {
     titleInfo ??= { hasSave: loadSave() !== null, chronicle: loadChronicle() }
-    drawStartScreen(ctx, canvas.width, canvas.height, world.seedStr, resumable || titleInfo.hasSave, titleInfo.chronicle)
+    const soundLine = touchOnly ? undefined : muted ? 'M to unmute' : gestured ? 'M to mute' : 'Press any key for sound'
+    drawStartScreen(ctx, canvas.width, canvas.height, world.seedStr, resumable || titleInfo.hasSave, titleInfo.chronicle, {
+      soundLine,
+      needKeyboard: touchOnly,
+    })
     if (flash.t > 0) drawResult(ctx, canvas.width, canvas.height, flash.text, 28)
     return
   }
   titleInfo = null
   if (screen === 'outfit') {
     drawOutfitScreen(ctx, canvas.width, canvas.height, outfit, outfitRow, budgetFor(career.banked), !nextVoyage && outfitReplacesSave)
+    if (flash.t > 0) drawResult(ctx, canvas.width, canvas.height, flash.text, 28)
     return
   }
   if (screen === 'spain') {
     drawSpainScreen(ctx, canvas.width, canvas.height, career, world.state, justBanked, promoted, performance.now() / 1000)
+    if (flash.t > 0) drawResult(ctx, canvas.width, canvas.height, flash.text, 28)
     return
   }
   if (screen === 'walkin' && walkin && walkinVillage) {
@@ -930,13 +1048,56 @@ function render() {
       },
       performance.now() / 1000,
     )
+    if (flash.t > 0) drawResult(ctx, canvas.width, canvas.height, flash.text, 28)
   }
+}
+
+/** The loop's frame: the recovery card after a crash, else the game plus any pause banner. */
+function present() {
+  if (crashed) {
+    drawCrashCard()
+    return
+  }
+  render()
+  if (paused) drawResult(ctx, canvas.width, canvas.height, 'Paused — press any key', Math.round(canvas.height / 2) - 17)
+}
+
+/** Drawn from nothing but the canvas: no world, HUD or state that might be what broke. */
+function drawCrashCard() {
+  const w = canvas.width
+  const h = canvas.height
+  // a throw may have left a save(), clip or transform open
+  if (typeof ctx.reset === 'function') ctx.reset()
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.globalAlpha = 1
+  ctx.globalCompositeOperation = 'source-over'
+  ctx.shadowBlur = 0
+  ctx.fillStyle = '#0a0a12'
+  ctx.fillRect(0, 0, w, h)
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'alphabetic'
+  ctx.font = "bold 22px 'Courier New', monospace"
+  ctx.fillStyle = '#e8e8ee'
+  ctx.fillText('Something went wrong.', Math.round(w / 2), Math.round(h / 2) - 12)
+  ctx.font = "16px 'Courier New', monospace"
+  ctx.fillStyle = '#9a9aa6'
+  ctx.fillText('Esc: reload to title   X: discard save and reload', Math.round(w / 2), Math.round(h / 2) + 20)
+  ctx.textAlign = 'left'
 }
 
 // window.__dbg: the automated playthrough bots drive and inspect the game through
 // this hook. It is a STABLE API: add entries, never rename or remove one, and keep
 // every signature and behaviour. DEV builds only; production strips it.
 if (import.meta.env.DEV) {
+  /** A bot is driving: clear every lifecycle gate so no key it sends is eaten. */
+  const standAside = () => {
+    driven = true
+    paused = false
+    audioPrimed = true
+    gestured = true
+    swallowStart = false
+    touchOnly = false
+  }
   ;(window as unknown as { __dbg: unknown }).__dbg = {
     world: () => world, // the live World object (art is non-enumerable)
     screen: () => screen, // current Screen name
@@ -945,6 +1106,8 @@ if (import.meta.env.DEV) {
       timeScale = s
     },
     step: (frames = 1) => { // N synchronous 60Hz update()s, then one render(); ignores rAF throttling
+      // bypasses pause, crash, audio and touch gates; exceptions reach the caller
+      standAside()
       for (let i = 0; i < frames; i++) update(1 / 60)
       render() // keep the canvas current even when rAF is throttled
     },
@@ -1006,6 +1169,7 @@ if (import.meta.env.DEV) {
       return { rms: Math.sqrt(sum / d.length), peak }
     },
     setSeed: (s: string) => { // fresh world from seed s, back on the title ready for Enter
+      standAside()
       world = newWorld(s)
       resetSession()
       encounter = null
@@ -1025,4 +1189,11 @@ if (import.meta.env.DEV) {
   }
 }
 
-startLoop(update, render)
+startLoop(update, present, {
+  onError: (err) => {
+    console.error(err)
+    crashed = true
+    player.suspend()
+  },
+  isPaused: () => paused || crashed,
+})
