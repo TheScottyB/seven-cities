@@ -1,7 +1,7 @@
-import { GameMap } from '../world/mapgen'
+import type { GameMap } from '../world/mapgen'
 import { makeRng } from '../world/rng'
 import { TILE } from '../world/tiles'
-import { GameState } from './state'
+import type { GameState } from './state'
 
 /**
  * Weather at sea: a slowly wandering global wind and a handful of roaming

@@ -1,8 +1,6 @@
-export enum GameStatus {
-  Playing,
-  Won,
-  Lost,
-}
+// Plain object rather than an enum (erasableSyntaxOnly); the numeric values are persisted in saves.
+export const GameStatus = { Playing: 0, Won: 1, Lost: 2 } as const
+export type GameStatus = (typeof GameStatus)[keyof typeof GameStatus]
 
 export interface GameState {
   food: number

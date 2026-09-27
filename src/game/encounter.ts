@@ -1,4 +1,4 @@
-import { GameState } from './state'
+import type { GameState } from './state'
 import type { Village } from '../world/villages'
 
 type Roll = () => number

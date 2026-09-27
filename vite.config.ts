@@ -1,5 +1,7 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
-  test: { globals: true, environment: 'node' },
+  // relative asset URLs so the build runs from any subpath (Pages project site, itch.io)
+  base: './',
+  test: { globals: true },
 })

@@ -1,4 +1,4 @@
-import { GameMap } from '../world/mapgen'
+import type { GameMap } from '../world/mapgen'
 import { tileInfo, isWalkable } from '../world/tiles'
 
 /** Sprite facings, in the order the sprite bank indexes them. */

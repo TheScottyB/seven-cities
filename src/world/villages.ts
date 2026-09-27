@@ -1,4 +1,4 @@
-import { GameMap } from './mapgen'
+import type { GameMap } from './mapgen'
 import { isWalkable, TILE } from './tiles'
 import { makeRng } from './rng'
 

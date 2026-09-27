@@ -1,4 +1,4 @@
-import { GameState } from '../game/state'
+import type { GameState } from '../game/state'
 
 const FONT = "16px 'Courier New', monospace"
 

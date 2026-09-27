@@ -1,5 +1,5 @@
 import type { Village } from '../world/villages'
-import { Outfit, outfitCost, remainingBudget, PRICES, BUDGET } from '../game/outfit'
+import { type Outfit, outfitCost, remainingBudget, PRICES, BUDGET } from '../game/outfit'
 import { TRADE_GOODS, GIFT_GOODS, effectiveTemperament } from '../game/encounter'
 import { bestScore, type ChronicleEntry } from '../game/chronicle'
 import { rankTitle, rankIndex, budgetFor, RANKS, type Career } from '../game/career'

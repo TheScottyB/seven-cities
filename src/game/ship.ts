@@ -1,4 +1,4 @@
-import { GameMap } from '../world/mapgen'
+import type { GameMap } from '../world/mapgen'
 import { TILE, isWalkable } from '../world/tiles'
 import { Facing, updateMover, type PartialMover } from './explorer'
 
