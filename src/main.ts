@@ -1,6 +1,10 @@
 /**
  * The app shell: owns the canvas, input, audio player and the one mutable
  * World, and wires the pure rules (src/game, src/world) to the renderer.
+ * Its seams live in src/app/: storage.ts (every localStorage access),
+ * viewport.ts (canvas sizing, the UI transform, the panels' clock),
+ * lifecycle.ts (pure, DOM-free: the pause, crash, gesture and swallow rules)
+ * and devhooks.ts (the DEV-only window.__dbg audio probes).
  *
  * Screen state machine:
  *   start -> outfit -> playing <-> walkin
@@ -9,23 +13,26 @@
  *   Esc from playing saves and returns to start with the world kept live
  *   (resumable); C on the title resumes it, else restores the save. A save
  *   taken on the way to Spain is marked 'refit' and resumes on the outfit screen.
+ * Each screen has its own update and render function (updateStart,
+ * renderStart, ...); update() and render() only do the shared work and dispatch.
  *
  * Two states sit over any screen. Paused: blur or hide mid-expedition holds
  * the simulation until the next key or click, which is swallowed. Crashed: a
  * throw from the loop leaves only a recovery card (Esc reloads, X discards the
  * save). A hidden tab also saves and suspends audio.
  *
- * Persistence is localStorage only: 'seven-cities-save' holds the running
- * expedition, 'seven-cities-chronicle' the record of finished ones and
- * 'seven-cities-audio' the mute choice. Only the tab that last wrote the save,
- * or claimed it through 'seven-cities-save-owner', keeps saving (see saveOwner).
+ * Persistence is localStorage only, through src/app/storage.ts:
+ * 'seven-cities-save' holds the running expedition, 'seven-cities-chronicle'
+ * the record of finished ones and 'seven-cities-audio' the mute choice. Only
+ * the tab that last wrote the save, or claimed it through
+ * 'seven-cities-save-owner', keeps saving (see saveOwner).
  *
  * Drawing: the backing store is in device pixels. The world is drawn at an
  * integer device zoom, interpolated between the last two 60Hz ticks; every UI
  * layer is drawn in CSS pixels under the device-pixel-ratio transform, and hit
  * regions and pointer coordinates use CSS pixels too.
  *
- * The window.__dbg hook at the bottom exists in DEV builds only.
+ * The window.__dbg hook is installed at the bottom, in DEV builds only.
  */
 import { generateMap } from './world/mapgen'
 import { placeVillages, nearestUnvisitedGolden, CITIES_OF_GOLD, type Village } from './world/villages'
@@ -61,23 +68,16 @@ import {
 import { makeScene, tickScene, type WalkinScene } from './game/walkin'
 import { makeCareer, bankGold, budgetFor, rankIndex, type Career } from './game/career'
 import { direct, ambienceFor, type AudioSnapshot, type GameEvent } from './audio/director'
-import { AudioPlayer, synthesize } from './audio/player'
-import { musicFor, buildTheme, type ThemeId } from './audio/score'
-import { scheduleThemeWindow } from './audio/music'
+import { AudioPlayer } from './audio/player'
+import { musicFor } from './audio/score'
 import { sceneControls, type SceneInput } from './audio/scene'
-import { synthTexture, type TextureKind } from './audio/texture'
 import { drawWalkin } from './ui/walkin'
 import { defaultOutfit, adjustOutfit, remainingBudget, type Outfit } from './game/outfit'
-import { serializeSave, deserializeSave, unpackBits, mapFingerprint, type SaveData, type SavePhase } from './game/save'
-import {
-  addEntry,
-  serializeChronicle,
-  deserializeChronicle,
-  type ChronicleEntry,
-} from './game/chronicle'
+import { unpackBits, mapFingerprint, type SaveData, type SavePhase } from './game/save'
+import type { ChronicleEntry } from './game/chronicle'
 import { buildTileset } from './art/tileset'
 import { Input } from './engine/input'
-import { centerCamera, zoomFor, type Camera } from './engine/camera'
+import { centerCamera, type Camera } from './engine/camera'
 import { beginHits, hitAt, setHover } from './ui/hit'
 import { startLoop } from './engine/loop'
 import { renderWorld, renderMinimap, renderStorms, invalidateMinimap, type RenderCtx, type WorldArt } from './engine/renderer'
@@ -91,27 +91,30 @@ import { font } from './ui/font'
 import { seedFromString } from './world/rng'
 import { TILE } from './world/tiles'
 import type { Screen } from './game/screen'
+import {
+  SAVE_KEY,
+  OWNER_KEY,
+  loadMuted,
+  storeMuted,
+  announceOwner,
+  writeSave,
+  loadSave,
+  unreadableSave,
+  removeSave,
+  loadChronicle,
+  appendChronicle,
+} from './app/storage'
+import { createViewport } from './app/viewport'
+import { makeLifecycle, routeKey, routeClick, pauseForFocus, takeFirstUnlock, standAside } from './app/lifecycle'
+import { audioProbes } from './app/devhooks'
 
 const REVEAL_RADIUS = 7
 const VILLAGE_COUNT = 28
 const AUTOSAVE_EVERY = 5 // seconds
-const SAVE_KEY = 'seven-cities-save'
-const CHRONICLE_KEY = 'seven-cities-chronicle'
-/** A fresh token written when a tab takes over the save; storage events only fire on a changed value. */
-const OWNER_KEY = 'seven-cities-save-owner'
-const AUDIO_KEY = 'seven-cities-audio'
 
 const canvas = document.getElementById('game') as HTMLCanvasElement
 const ctx = canvas.getContext('2d')!
 const input = new Input()
-
-/** Device pixels per CSS pixel; the backing store is sized in device px. */
-let dpr = 1
-/** The view in CSS px: every UI layer and hit region is laid out in these. */
-let cssW = 0
-let cssH = 0
-/** Device px per art px for the world: always an integer, so tiles stay crisp at any dpr. */
-let devZoom = 2
 
 /**
  * Where the camera and explorer stood at the start of the last playing tick;
@@ -125,27 +128,14 @@ const resetInterp = () => {
   interpValid = false
 }
 
-function resize() {
-  dpr = window.devicePixelRatio || 1
-  cssW = window.innerWidth
-  cssH = window.innerHeight
-  canvas.width = Math.round(cssW * dpr)
-  canvas.height = Math.round(cssH * dpr)
-  canvas.style.width = cssW + 'px'
-  canvas.style.height = cssH + 'px'
-  devZoom = Math.max(2, Math.round(zoomFor(cssW) * dpr))
-  resetInterp()
-}
-resize()
+/** dpr, the CSS-px view and the world's device zoom; a resize also drops the interpolation. */
+const view = createViewport(canvas, ctx, resetInterp)
+view.resize()
 // a browser zoom changes devicePixelRatio and fires this too
-window.addEventListener('resize', resize)
+window.addEventListener('resize', view.resize)
 
-/** UI layers draw in CSS px; the transform maps them onto the device-px backing store. */
-const uiTransform = () => ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-
-const reduceMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null
-/** Seconds for the panels' decorative motion; held at 0 under the OS reduced-motion setting. */
-const uiClock = () => (reduceMotion?.matches ? 0 : performance.now() / 1000)
+const uiTransform = view.uiTransform
+const uiClock = view.uiClock
 
 interface World {
   seedStr: string
@@ -220,83 +210,34 @@ const player = new AudioPlayer()
 let audioEvents: GameEvent[] = []
 let prevSnap: AudioSnapshot | null = null
 
-/** Set by the loop's error handler; the canvas shows only the recovery card from then on. */
-let crashed = false
-/** Blur or hide during play: the simulation holds until the next key or click. */
-let paused = false
-/** Any key or click so far; the title stops asking for one. */
-let gestured = false
-/** The first unlock has happened (or a bot primed audio); only that one is swallowed. */
-let audioPrimed = false
-/** The pending gesture struck up the title theme; a start action it carried is dropped. */
-let swallowStart = false
-/** A phone or tablet with no keyboard: the title asks for one before offering a run. */
-let touchOnly =
+/** Crashed, paused, first gesture, swallowed start press, touch-only, bot-driven: see src/app/lifecycle.ts. */
+const life = makeLifecycle(
   typeof matchMedia === 'function' &&
-  matchMedia('(pointer: coarse)').matches &&
-  !matchMedia('(any-pointer: fine)').matches &&
-  navigator.maxTouchPoints > 0
-/** DEV: a bot drives through __dbg, so blur/hide pauses would only eat its keys. */
-let driven = false
-
-function loadMuted(): boolean {
-  try {
-    return localStorage.getItem(AUDIO_KEY) === 'true'
-  } catch {
-    return false
-  }
-}
-
-function storeMuted(m: boolean) {
-  try {
-    localStorage.setItem(AUDIO_KEY, JSON.stringify(m))
-  } catch {
-    /* the choice lasts for this tab only */
-  }
-}
+    matchMedia('(pointer: coarse)').matches &&
+    !matchMedia('(any-pointer: fine)').matches &&
+    navigator.maxTouchPoints > 0,
+)
+/** Every key or click offers the browser audio through this. */
+const unlockAudio = () => player.unlock()
 
 let muted = loadMuted()
 player.setMuted(muted)
 
-/**
- * Every key or click offers the browser audio; the first success is remembered.
- * A synthetic event cannot start audio, so it is never the press that gets swallowed.
- */
-function onGesture(e: Event) {
-  gestured = true
-  if (crashed) return // the card keeps audio silent
-  if (player.unlock() && !audioPrimed && e.isTrusted) {
-    audioPrimed = true
-    swallowStart = true
-  }
-}
-
-/** Pause for blur/hide, only mid-expedition; true when this call paused. */
-function pauseForFocus(): boolean {
-  if (paused || crashed || driven) return false
-  if (screen !== 'playing' && screen !== 'walkin') return false
-  paused = true
-  return true
-}
-
-/** The key or click that ends a pause does nothing else. */
+/** The key or click that ends a pause (routeKey/routeClick cleared it) does nothing else. */
 function unpause() {
-  paused = false
   input.endFrame()
   clicks.length = 0
 }
 
 function saveIfPlaying() {
-  if (crashed) return // the state that threw is not worth keeping
+  if (life.crashed) return // the state that threw is not worth keeping
   if (screen === 'playing' || screen === 'walkin') saveGame()
 }
 
 // registered after Input's own listener, so the key is already queued when a pause drops it
 window.addEventListener('keydown', (e) => {
-  touchOnly = false
-  onGesture(e)
-  // a driving bot's keys go to Input; step() still runs update() after a crash
-  if (crashed && !driven) {
+  const route = routeKey(life, e.isTrusted, unlockAudio)
+  if (route === 'recovery') {
     // update() no longer runs; the recovery card's two keys are read here
     if (e.ctrlKey || e.metaKey || e.altKey) return
     if (e.key === 'Escape') location.reload()
@@ -306,17 +247,17 @@ window.addEventListener('keydown', (e) => {
     }
     return
   }
-  if (paused) unpause()
+  if (route === 'unpause') unpause()
 })
 window.addEventListener('blur', () => {
-  if (pauseForFocus() && screen === 'playing') saveGame()
+  if (pauseForFocus(life, screen) && screen === 'playing') saveGame()
 })
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    pauseForFocus()
+    pauseForFocus(life, screen)
     saveIfPlaying()
     player.suspend()
-  } else if (!crashed) {
+  } else if (!life.crashed) {
     player.resume()
   }
 })
@@ -336,9 +277,9 @@ function canvasPoint(e: MouseEvent): { x: number; y: number } {
   return { x: e.clientX - r.left, y: e.clientY - r.top }
 }
 canvas.addEventListener('click', (e) => {
-  onGesture(e)
-  if (crashed) return
-  if (paused) {
+  const route = routeClick(life, e.isTrusted, unlockAudio)
+  if (route === 'ignore') return
+  if (route === 'unpause') {
     unpause()
     return
   }
@@ -470,18 +411,14 @@ function resetSession() {
   titleReturn = null
 }
 
-// --- save / load ---------------------------------------------------------
+// --- save / load (the storage calls themselves are in src/app/storage.ts) ---
 
 /** This tab becomes the one that saves; `announce` tells any other tab to stop now. */
 function claimSave(announce: boolean) {
   saveOwner = true
   ownerWarned = false
   if (!announce) return
-  try {
-    localStorage.setItem(OWNER_KEY, `${Date.now()}-${Math.random()}`)
-  } catch {
-    /* no storage, nothing to contend for */
-  }
+  announceOwner()
 }
 
 /** Can this tab write SAVE_KEY? Warns once when another tab has taken it over. */
@@ -500,65 +437,35 @@ function saveGame(phase: SavePhase = 'at-sea'): boolean {
   if (!ownsSave()) return false
   titleInfo = null
   const { map } = world
-  try {
-    localStorage.setItem(
-      SAVE_KEY,
-      serializeSave({
-        seedStr: world.seedStr,
-        mapHash: mapFingerprint(map.tiles, map.width, map.height, world.villages),
-        phase,
-        state: world.state,
-        explorer: { x: world.explorer.x, y: world.explorer.y },
-        ships: world.ships.map((sh) => ({ x: sh.x, y: sh.y })),
-        activeShip: world.activeShip,
-        sailing: world.sailing,
-        career,
-        outposts: world.outposts,
-        fogSeen: world.fog.seen,
-        villages: world.villages,
-      }),
-    )
+  const written = writeSave({
+    seedStr: world.seedStr,
+    mapHash: mapFingerprint(map.tiles, map.width, map.height, world.villages),
+    phase,
+    state: world.state,
+    explorer: { x: world.explorer.x, y: world.explorer.y },
+    ships: world.ships.map((sh) => ({ x: sh.x, y: sh.y })),
+    activeShip: world.activeShip,
+    sailing: world.sailing,
+    career,
+    outposts: world.outposts,
+    fogSeen: world.fog.seen,
+    villages: world.villages,
+  })
+  if (written) {
     storageOk = true
     return true
-  } catch {
-    // storage full/blocked: the game plays on without saves, and says so once
-    storageOk = false
-    if (!storageWarned && screen === 'playing') {
-      storageWarned = true
-      flash = { text: 'Saving is unavailable in this browser: progress lasts only until you close the tab.', t: 4 }
-    }
-    return false
   }
+  // storage full/blocked: the game plays on without saves, and says so once
+  storageOk = false
+  if (!storageWarned && screen === 'playing') {
+    storageWarned = true
+    flash = { text: 'Saving is unavailable in this browser: progress lasts only until you close the tab.', t: 4 }
+  }
+  return false
 }
 
-function loadSave(): SaveData | null {
-  try {
-    const raw = localStorage.getItem(SAVE_KEY)
-    return raw ? deserializeSave(raw) : null
-  } catch {
-    return null
-  }
-}
-
-/** A stored save loadSave() rejects: damaged, or written in another format. */
-function unreadableSave(): boolean {
-  try {
-    const raw = localStorage.getItem(SAVE_KEY)
-    return !!raw && deserializeSave(raw) === null
-  } catch {
-    return false
-  }
-}
 // reported on the title; the next expedition's save replaces it
 if (unreadableSave()) flash = { text: 'Your saved expedition could not be read.', t: 3.5 }
-
-function loadChronicle(): ChronicleEntry[] {
-  try {
-    return deserializeChronicle(localStorage.getItem(CHRONICLE_KEY) ?? '[]')
-  } catch {
-    return []
-  }
-}
 
 /** The expedition's final tally: score() is the sum of scoreParts, plus the gold banked in Spain. */
 function finalScore(): number {
@@ -576,21 +483,13 @@ function recordExpedition() {
     cities: s.citiesFound,
   }
   titleInfo = null
-  try {
-    localStorage.setItem(CHRONICLE_KEY, serializeChronicle(addEntry(loadChronicle(), entry)))
-  } catch {
-    /* chronicle is a nicety — never let storage failures break the game */
-  }
+  appendChronicle(entry)
 }
 
 function clearSave() {
   if (!ownsSave()) return
   titleInfo = null
-  try {
-    localStorage.removeItem(SAVE_KEY)
-  } catch {
-    /* ignore */
-  }
+  removeSave()
 }
 
 const inMap = (map: World['map'], p: { x: number; y: number }) =>
@@ -682,10 +581,10 @@ function currentTarget(): InteractionTarget | null {
   })
 }
 
+/** One 60Hz tick: the shared M key and toast clock, then the current screen's update. */
 function update(dt: number) {
   const click = clicks.shift() ?? null
-  const firstUnlock = swallowStart
-  swallowStart = false
+  const firstUnlock = takeFirstUnlock(life)
   // the press that struck up the title theme does nothing else, M included
   if (input.pressed('m') && !(firstUnlock && screen === 'start')) {
     muted = player.toggleMute()
@@ -695,121 +594,117 @@ function update(dt: number) {
   // the one place a toast ages, whatever screen shows it
   if (flash.t > 0) flash.t -= dt * timeScale
 
-  if (screen === 'walkin' && walkin && walkinVillage) {
-    const { dx, dy } = input.axis()
-    const status = tickScene(walkin, dx, dy, dt * timeScale)
-    if (input.pressed('esc') || status === 'left') {
-      screen = 'playing'
-      walkin = null
-    } else if (status === 'chief') {
-      encounter = walkinVillage
-      screen = 'playing'
-      walkin = null
-    } else if (status === 'driven-off') {
-      applyDrivenOff(world.state)
-      flash = { text: 'The villagers drive you out!', t: 2.5 }
-      audioEvents.push('driven-off')
-      screen = 'playing'
-      walkin = null
-    }
-    if (screen !== 'walkin') resetInterp()
-    input.endFrame()
-    pumpAudio()
-    return
-  }
+  if (screen === 'walkin' && walkin && walkinVillage) updateWalkin(dt, walkin, walkinVillage)
+  else if (screen === 'start') updateStart(click, firstUnlock)
+  else if (screen === 'outfit') updateOutfit(click)
+  else if (screen === 'spain') updateSpain(click)
+  else if (screen === 'over') updateOver(click)
+  else updatePlaying(dt, click)
+  input.endFrame()
+  pumpAudio()
+}
 
-  if (screen === 'start') {
-    // while a touch-only device is gated, taps on the (unregistered) start lines are ignored
-    const startNew = input.pressed('enter') || (!touchOnly && click === 'start-new')
-    const startContinue = !startNew && (input.pressed('c') || (!touchOnly && click === 'start-continue'))
-    if (firstUnlock) {
-      // this press struck up the title theme; stay so it is heard, the next press proceeds
-    } else if (startNew) {
-      outfitReplacesSave = titleInfo?.hasSave ?? loadSave() !== null
-      const back = { resumable, career, nextVoyage, justBanked, promoted, saveOwner, ownerWarned }
-      resetSession()
-      titleReturn = back
-      claimSave(false)
-      outfit = defaultOutfit()
-      outfitRow = 0
-      flash = { text: '', t: 0 }
-      screen = 'outfit'
-    } else if (startContinue) {
-      continueExpedition()
-    } else if (input.pressed('r') || click === 'start-reroll') {
-      // roll a new world to explore
-      world = newWorld(String(1 + (Math.floor(performance.now() * 7) % 99999)))
-      resumable = false
-    } else if (click === 'start-keyboard') {
-      touchOnly = false
-    }
-    input.endFrame()
-    pumpAudio()
-    return
+function updateWalkin(dt: number, scene: WalkinScene, village: Village) {
+  const { dx, dy } = input.axis()
+  const status = tickScene(scene, dx, dy, dt * timeScale)
+  if (input.pressed('esc') || status === 'left') {
+    screen = 'playing'
+    walkin = null
+  } else if (status === 'chief') {
+    encounter = village
+    screen = 'playing'
+    walkin = null
+  } else if (status === 'driven-off') {
+    applyDrivenOff(world.state)
+    flash = { text: 'The villagers drive you out!', t: 2.5 }
+    audioEvents.push('driven-off')
+    screen = 'playing'
+    walkin = null
   }
+  if (screen !== 'walkin') resetInterp()
+}
 
-  if (screen === 'outfit') {
-    const fields: (keyof Outfit)[] = ['food', 'goods', 'crew', 'ships']
-    if (input.pressed('up')) outfitRow = (outfitRow + fields.length - 1) % fields.length
-    if (input.pressed('down')) outfitRow = (outfitRow + 1) % fields.length
-    const budget = budgetFor(career.banked)
-    if (click?.startsWith('outfit-row-')) outfitRow = Number(click.slice('outfit-row-'.length))
-    if (click?.startsWith('outfit-dec-')) {
-      outfitRow = Number(click.slice('outfit-dec-'.length))
-      outfit = adjustOutfit(outfit, fields[outfitRow], -1, budget)
-    }
-    if (click?.startsWith('outfit-inc-')) {
-      outfitRow = Number(click.slice('outfit-inc-'.length))
-      outfit = adjustOutfit(outfit, fields[outfitRow], 1, budget)
-    }
-    if (input.pressedOrRepeat('left')) outfit = adjustOutfit(outfit, fields[outfitRow], -1, budget)
-    if (input.pressedOrRepeat('right')) outfit = adjustOutfit(outfit, fields[outfitRow], 1, budget)
-    if (input.pressed('enter') || (!touchOnly && click === 'outfit-go')) {
-      if (nextVoyage) embarkVoyage()
-      else embark()
-    } else if (input.pressed('esc') && !nextVoyage) {
-      if (titleReturn) {
-        // a storage event since Enter still stands
-        const back = titleReturn
-        ;({ resumable, career, nextVoyage, justBanked, promoted, ownerWarned } = back)
-        saveOwner = saveOwner && back.saveOwner
-        titleReturn = null
-      }
-      screen = 'start'
-    }
-    input.endFrame()
-    pumpAudio()
-    return
+function updateStart(click: string | null, firstUnlock: boolean) {
+  // while a touch-only device is gated, taps on the (unregistered) start lines are ignored
+  const startNew = input.pressed('enter') || (!life.touchOnly && click === 'start-new')
+  const startContinue = !startNew && (input.pressed('c') || (!life.touchOnly && click === 'start-continue'))
+  if (firstUnlock) {
+    // this press struck up the title theme; stay so it is heard, the next press proceeds
+  } else if (startNew) {
+    outfitReplacesSave = titleInfo?.hasSave ?? loadSave() !== null
+    const back = { resumable, career, nextVoyage, justBanked, promoted, saveOwner, ownerWarned }
+    resetSession()
+    titleReturn = back
+    claimSave(false)
+    outfit = defaultOutfit()
+    outfitRow = 0
+    flash = { text: '', t: 0 }
+    screen = 'outfit'
+  } else if (startContinue) {
+    continueExpedition()
+  } else if (input.pressed('r') || click === 'start-reroll') {
+    // roll a new world to explore
+    world = newWorld(String(1 + (Math.floor(performance.now() * 7) % 99999)))
+    resumable = false
+  } else if (click === 'start-keyboard') {
+    life.touchOnly = false
   }
+}
 
-  if (screen === 'spain') {
-    if (input.pressed('enter') || click === 'spain-go') {
-      outfit = defaultOutfit()
-      outfitRow = 0
-      nextVoyage = true
-      screen = 'outfit'
-    }
-    input.endFrame()
-    pumpAudio()
-    return
+function updateOutfit(click: string | null) {
+  const fields: (keyof Outfit)[] = ['food', 'goods', 'crew', 'ships']
+  if (input.pressed('up')) outfitRow = (outfitRow + fields.length - 1) % fields.length
+  if (input.pressed('down')) outfitRow = (outfitRow + 1) % fields.length
+  const budget = budgetFor(career.banked)
+  if (click?.startsWith('outfit-row-')) outfitRow = Number(click.slice('outfit-row-'.length))
+  if (click?.startsWith('outfit-dec-')) {
+    outfitRow = Number(click.slice('outfit-dec-'.length))
+    outfit = adjustOutfit(outfit, fields[outfitRow], -1, budget)
   }
-
-  if (screen === 'over') {
-    if (input.pressed('enter') || click === 'over-restart') {
-      resetSession()
-      world = newWorld(String(1492 + (Math.floor(performance.now()) % 9999)))
-      outfitReplacesSave = false
-      outfit = defaultOutfit()
-      outfitRow = 0
-      encounter = null
-      screen = 'outfit'
-    }
-    input.endFrame()
-    pumpAudio()
-    return
+  if (click?.startsWith('outfit-inc-')) {
+    outfitRow = Number(click.slice('outfit-inc-'.length))
+    outfit = adjustOutfit(outfit, fields[outfitRow], 1, budget)
   }
+  if (input.pressedOrRepeat('left')) outfit = adjustOutfit(outfit, fields[outfitRow], -1, budget)
+  if (input.pressedOrRepeat('right')) outfit = adjustOutfit(outfit, fields[outfitRow], 1, budget)
+  if (input.pressed('enter') || (!life.touchOnly && click === 'outfit-go')) {
+    if (nextVoyage) embarkVoyage()
+    else embark()
+  } else if (input.pressed('esc') && !nextVoyage) {
+    if (titleReturn) {
+      // a storage event since Enter still stands
+      const back = titleReturn
+      ;({ resumable, career, nextVoyage, justBanked, promoted, ownerWarned } = back)
+      saveOwner = saveOwner && back.saveOwner
+      titleReturn = null
+    }
+    screen = 'start'
+  }
+}
 
-  // playing
+function updateSpain(click: string | null) {
+  if (input.pressed('enter') || click === 'spain-go') {
+    outfit = defaultOutfit()
+    outfitRow = 0
+    nextVoyage = true
+    screen = 'outfit'
+  }
+}
+
+function updateOver(click: string | null) {
+  if (input.pressed('enter') || click === 'over-restart') {
+    resetSession()
+    world = newWorld(String(1492 + (Math.floor(performance.now()) % 9999)))
+    outfitReplacesSave = false
+    outfit = defaultOutfit()
+    outfitRow = 0
+    encounter = null
+    screen = 'outfit'
+  }
+}
+
+/** 'playing' (and a 'walkin' with no scene, which falls through to here as it always has). */
+function updatePlaying(dt: number, click: string | null) {
   const sdt = dt * timeScale
   const { map, fog, state, explorer } = world
   const fromCam = { x: world.cam.x, y: world.cam.y }
@@ -873,65 +768,7 @@ function update(dt: number) {
     }
 
     const target = screen === 'playing' && input.pressed('action') ? currentTarget() : null
-    if (target) {
-      switch (target.kind) {
-        case 'spain': {
-          // set course for Spain: bank the gold, count the voyage
-          const before = rankIndex(career.banked)
-          justBanked = Math.floor(state.gold)
-          career = bankGold(career, state.gold)
-          state.gold = 0
-          promoted = rankIndex(career.banked) > before
-          flash = { text: '', t: 0 } // the court screen shows toasts now; none from the voyage
-          screen = 'spain'
-          saveGame('refit')
-          break
-        }
-        case 'landfall':
-          // step ashore; the ship stays moored where we left it
-          resetInterp()
-          world.sailing = false
-          explorer.x = target.spot[0] + 0.5
-          explorer.y = target.spot[1] + 0.5
-          flash = { text: 'You make landfall.', t: 2 }
-          saveGame()
-          break
-        case 'village': {
-          const v = target.village
-          const firstGolden = v.golden && !v.visited
-          discoverVillage(state, v)
-          if (firstGolden) {
-            flash = { text: `A City of Gold — ${state.citiesFound} of ${CITIES_OF_GOLD} found!`, t: 3 }
-          }
-          walkin = makeScene(v, state.fear)
-          walkinVillage = v
-          resetInterp()
-          screen = 'walkin'
-          break
-        }
-        case 'outpost': {
-          const taken = resupply(state, target.outpost)
-          flash = { text: `The garrison shares its stores: +${taken} provisions.`, t: 2.5 }
-          saveGame()
-          break
-        }
-        case 'ship': {
-          const ship = world.ships[target.index]
-          resetInterp()
-          world.activeShip = target.index
-          world.sailing = true
-          explorer.x = ship.x
-          explorer.y = ship.y
-          // the hull keeps the heading it was moored with
-          explorer.facing = ship.facing ?? Facing.E
-          explorer.gait = 0
-          explorer.moving = false
-          flash = { text: 'You board your ship. The coast is yours to follow.', t: 2 }
-          saveGame()
-          break
-        }
-      }
-    }
+    if (target) actOn(target)
 
     // the action above may already have left 'playing' (walk-in, Spain) this frame
     if (screen === 'playing' && input.pressed('esc')) {
@@ -952,13 +789,73 @@ function update(dt: number) {
     }
   }
 
-  centerCamera(world.cam, explorer.x, explorer.y, canvas.width, canvas.height, map.width, map.height, devZoom)
+  centerCamera(world.cam, explorer.x, explorer.y, canvas.width, canvas.height, map.width, map.height, view.devZoom)
   // after a jump this tick, the next frame starts from where things landed
   prevCam = interpValid ? fromCam : { x: world.cam.x, y: world.cam.y }
   prevPos = interpValid ? fromPos : { x: explorer.x, y: explorer.y }
   interpValid = true
-  input.endFrame()
-  pumpAudio()
+}
+
+/** E on the current target; drawActionPrompt() words the same choice. */
+function actOn(target: InteractionTarget) {
+  const { state, explorer } = world
+  switch (target.kind) {
+    case 'spain': {
+      // set course for Spain: bank the gold, count the voyage
+      const before = rankIndex(career.banked)
+      justBanked = Math.floor(state.gold)
+      career = bankGold(career, state.gold)
+      state.gold = 0
+      promoted = rankIndex(career.banked) > before
+      flash = { text: '', t: 0 } // the court screen shows toasts now; none from the voyage
+      screen = 'spain'
+      saveGame('refit')
+      break
+    }
+    case 'landfall':
+      // step ashore; the ship stays moored where we left it
+      resetInterp()
+      world.sailing = false
+      explorer.x = target.spot[0] + 0.5
+      explorer.y = target.spot[1] + 0.5
+      flash = { text: 'You make landfall.', t: 2 }
+      saveGame()
+      break
+    case 'village': {
+      const v = target.village
+      const firstGolden = v.golden && !v.visited
+      discoverVillage(state, v)
+      if (firstGolden) {
+        flash = { text: `A City of Gold — ${state.citiesFound} of ${CITIES_OF_GOLD} found!`, t: 3 }
+      }
+      walkin = makeScene(v, state.fear)
+      walkinVillage = v
+      resetInterp()
+      screen = 'walkin'
+      break
+    }
+    case 'outpost': {
+      const taken = resupply(state, target.outpost)
+      flash = { text: `The garrison shares its stores: +${taken} provisions.`, t: 2.5 }
+      saveGame()
+      break
+    }
+    case 'ship': {
+      const ship = world.ships[target.index]
+      resetInterp()
+      world.activeShip = target.index
+      world.sailing = true
+      explorer.x = ship.x
+      explorer.y = ship.y
+      // the hull keeps the heading it was moored with
+      explorer.facing = ship.facing ?? Facing.E
+      explorer.gait = 0
+      explorer.moving = false
+      flash = { text: 'You board your ship. The coast is yours to follow.', t: 2 }
+      saveGame()
+      break
+    }
+  }
 }
 
 function chooseEncounter(action: 'trade' | 'gift' | 'attack') {
@@ -1012,50 +909,66 @@ function render(alpha = 1) {
   uiTransform()
 
   if (screen === 'start') {
-    titleInfo ??= { hasSave: loadSave() !== null, chronicle: loadChronicle() }
-    const soundLine = touchOnly ? undefined : muted ? 'M to unmute' : gestured ? 'M to mute' : 'Press any key for sound'
-    drawStartScreen(ctx, cssW, cssH, world.seedStr, resumable || titleInfo.hasSave, titleInfo.chronicle, {
-      soundLine,
-      needKeyboard: touchOnly,
-    })
-    if (flash.t > 0) drawResult(ctx, cssW, flash.text, 28)
+    renderStart()
     return
   }
   titleInfo = null
-  if (screen === 'outfit') {
-    drawOutfitScreen(ctx, cssW, cssH, outfit, outfitRow, budgetFor(career.banked), !nextVoyage && outfitReplacesSave)
-    if (flash.t > 0) drawResult(ctx, cssW, flash.text, 28)
-    return
+  if (screen === 'outfit') renderOutfit()
+  else if (screen === 'spain') renderSpain()
+  else if (screen === 'walkin' && walkin && walkinVillage) renderWalkin(walkin, walkinVillage)
+  else {
+    // the game-over card is drawn over the world it ended in
+    renderPlaying(alpha)
+    if (screen === 'over') renderOver()
   }
-  if (screen === 'spain') {
-    drawSpainScreen(ctx, cssW, cssH, career, world.state, justBanked, promoted, uiClock())
-    if (flash.t > 0) drawResult(ctx, cssW, flash.text, 28)
-    return
-  }
-  if (screen === 'walkin' && walkin && walkinVillage) {
-    let note: string
-    if (walkin.hostile) {
-      // hostile even with no fear to blame: the village's own nature, not your deeds
-      note =
-        walkinVillage.temperament < HOSTILE_BELOW
-          ? 'This people wants no strangers here. They close in...'
-          : 'The people remember what your kind has done. They close in...'
-    } else {
-      note =
-        moodOf(walkin.mood) === 'friendly'
-          ? 'The people watch you with open curiosity.'
-          : 'The people keep their distance, wary of the stranger.'
-    }
-    drawWalkin(ctx, cssW, cssH, walkin, tileset, note, spriteBank, uiClock())
-    if (flash.t > 0) drawResult(ctx, cssW, flash.text, 8)
-    return
-  }
+}
 
+function renderStart() {
+  titleInfo ??= { hasSave: loadSave() !== null, chronicle: loadChronicle() }
+  const soundLine = life.touchOnly ? undefined : muted ? 'M to unmute' : life.gestured ? 'M to mute' : 'Press any key for sound'
+  drawStartScreen(ctx, view.cssW, view.cssH, world.seedStr, resumable || titleInfo.hasSave, titleInfo.chronicle, {
+    soundLine,
+    needKeyboard: life.touchOnly,
+  })
+  if (flash.t > 0) drawResult(ctx, view.cssW, flash.text, 28)
+}
+
+function renderOutfit() {
+  drawOutfitScreen(ctx, view.cssW, view.cssH, outfit, outfitRow, budgetFor(career.banked), !nextVoyage && outfitReplacesSave)
+  if (flash.t > 0) drawResult(ctx, view.cssW, flash.text, 28)
+}
+
+function renderSpain() {
+  drawSpainScreen(ctx, view.cssW, view.cssH, career, world.state, justBanked, promoted, uiClock())
+  if (flash.t > 0) drawResult(ctx, view.cssW, flash.text, 28)
+}
+
+function renderWalkin(scene: WalkinScene, village: Village) {
+  let note: string
+  if (scene.hostile) {
+    // hostile even with no fear to blame: the village's own nature, not your deeds
+    note =
+      village.temperament < HOSTILE_BELOW
+        ? 'This people wants no strangers here. They close in...'
+        : 'The people remember what your kind has done. They close in...'
+  } else {
+    note =
+      moodOf(scene.mood) === 'friendly'
+        ? 'The people watch you with open curiosity.'
+        : 'The people keep their distance, wary of the stranger.'
+  }
+  drawWalkin(ctx, view.cssW, view.cssH, scene, tileset, note, spriteBank, uiClock())
+  if (flash.t > 0) drawResult(ctx, view.cssW, flash.text, 8)
+}
+
+/** The world, HUD, minimap and prompts: 'playing', and under the 'over' card. */
+function renderPlaying(alpha: number) {
+  const { cssW, cssH, dpr, devZoom } = view
   // the world pass works in device px at an integer zoom, so the snaps in the
   // renderer land on whole device pixels
   let cam = world.cam
   let explorer = world.explorer
-  if (screen === 'playing' && interpValid && !paused && alpha < 1) {
+  if (screen === 'playing' && interpValid && !life.paused && alpha < 1) {
     const lerp = (a: number, b: number) => a + (b - a) * alpha
     cam = { x: lerp(prevCam.x, world.cam.x), y: lerp(prevCam.y, world.cam.y) }
     explorer = { ...world.explorer, x: lerp(prevPos.x, world.explorer.x), y: lerp(prevPos.y, world.explorer.y) }
@@ -1084,43 +997,7 @@ function render(alpha = 1) {
       ctx.fillRect(0, 0, cssW, cssH)
     }
   }
-  if (!encounter && screen === 'playing') {
-    let text = ''
-    let color = '#e8e8ee'
-    const target = currentTarget()
-    switch (target?.kind) {
-      case 'spain':
-        text = 'Press E to sail home to Spain'
-        color = '#f4c430'
-        break
-      case 'landfall':
-        text = 'Press E to make landfall'
-        break
-      case 'village': {
-        const golden = target.village.golden
-        text = `Press E to approach ${golden ? 'the golden city' : 'the village'}`
-        if (golden) color = '#f4c430'
-        break
-      }
-      case 'outpost':
-        text = `Press E to resupply (${Math.floor(target.outpost.stock)} in stores)`
-        break
-      case 'ship':
-        text = 'Press E to board your ship'
-        break
-    }
-    if (text) {
-      ctx.font = font(16)
-      ctx.fillStyle = 'rgba(0,0,0,0.6)'
-      ctx.fillRect(cssW / 2 - 185, cssH - 56, 370, 32)
-      ctx.fillStyle = color
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle' // centred in the plate
-      ctx.fillText(text, cssW / 2, cssH - 40)
-      ctx.textAlign = 'left'
-      ctx.textBaseline = 'alphabetic'
-    }
-  }
+  if (!encounter && screen === 'playing') drawActionPrompt()
 
   // quiet key reference in the corner
   if (screen === 'playing' && !encounter) {
@@ -1139,42 +1016,82 @@ function render(alpha = 1) {
   if (flash.t > 0 && screen === 'playing' && !encounter) drawResult(ctx, cssW, flash.text, hudH + 10)
   if (encounter)
     drawEncounter(ctx, cssW, cssH, encounter, world.state.goods, world.state.fear, uiClock())
+}
 
-  if (screen === 'over') {
-    const won = world.state.status === GameStatus.Won
-    drawGameOver(
-      ctx,
-      cssW,
-      cssH,
-      won,
-      finalScore(),
-      career,
-      {
-        cities: world.state.citiesFound,
-        day: world.state.day,
-        parts: scoreParts(world.state, world.fog.revealedCount),
-      },
-      uiClock(),
-    )
-    if (flash.t > 0) drawResult(ctx, cssW, flash.text, 28)
+/** The plate naming what E would do; actOn() does it. */
+function drawActionPrompt() {
+  const { cssW, cssH } = view
+  let text = ''
+  let color = '#e8e8ee'
+  const target = currentTarget()
+  switch (target?.kind) {
+    case 'spain':
+      text = 'Press E to sail home to Spain'
+      color = '#f4c430'
+      break
+    case 'landfall':
+      text = 'Press E to make landfall'
+      break
+    case 'village': {
+      const golden = target.village.golden
+      text = `Press E to approach ${golden ? 'the golden city' : 'the village'}`
+      if (golden) color = '#f4c430'
+      break
+    }
+    case 'outpost':
+      text = `Press E to resupply (${Math.floor(target.outpost.stock)} in stores)`
+      break
+    case 'ship':
+      text = 'Press E to board your ship'
+      break
   }
+  if (text) {
+    ctx.font = font(16)
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'
+    ctx.fillRect(cssW / 2 - 185, cssH - 56, 370, 32)
+    ctx.fillStyle = color
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle' // centred in the plate
+    ctx.fillText(text, cssW / 2, cssH - 40)
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'alphabetic'
+  }
+}
+
+function renderOver() {
+  const won = world.state.status === GameStatus.Won
+  drawGameOver(
+    ctx,
+    view.cssW,
+    view.cssH,
+    won,
+    finalScore(),
+    career,
+    {
+      cities: world.state.citiesFound,
+      day: world.state.day,
+      parts: scoreParts(world.state, world.fog.revealedCount),
+    },
+    uiClock(),
+  )
+  if (flash.t > 0) drawResult(ctx, view.cssW, flash.text, 28)
 }
 
 /** The loop's frame: the recovery card after a crash, else the game plus any pause banner. */
 function present(alpha: number) {
-  if (crashed) {
+  if (life.crashed) {
     drawCrashCard()
     return
   }
   render(alpha)
   uiTransform()
-  if (paused) drawResult(ctx, cssW, 'Paused — press any key', Math.round(cssH / 2) - 17)
+  if (life.paused) drawResult(ctx, view.cssW, 'Paused — press any key', Math.round(view.cssH / 2) - 17)
 }
 
 /** Drawn from nothing but the canvas: no world, HUD or state that might be what broke. */
 function drawCrashCard() {
-  const w = cssW
-  const h = cssH
+  const w = view.cssW
+  const h = view.cssH
   // a throw may have left a save(), clip or transform open
   if (typeof ctx.reset === 'function') ctx.reset()
   uiTransform()
@@ -1194,19 +1111,15 @@ function drawCrashCard() {
   ctx.textAlign = 'left'
 }
 
-// window.__dbg: the automated playthrough bots drive and inspect the game through
-// this hook. It is a STABLE API: add entries, never rename or remove one, and keep
-// every signature and behaviour. DEV builds only; production strips it.
+// window.__dbg: the automated playthrough bots drive and inspect the game
+// through this. A STABLE API: add entries, never rename or remove one, and keep
+// every signature and behaviour. The state-free audio probes come from
+// src/app/devhooks.ts; the DEV guard keeps both out of production builds.
 if (import.meta.env.DEV) {
   /** A bot is driving: clear every lifecycle gate so no key it sends is eaten. */
-  const standAside = () => {
-    driven = true
+  const standAsideForBot = () => {
+    standAside(life)
     input.keepOnBlur = true
-    paused = false
-    audioPrimed = true
-    gestured = true
-    swallowStart = false
-    touchOnly = false
   }
   ;(window as unknown as { __dbg: unknown }).__dbg = {
     world: () => world, // the live World object (art is non-enumerable)
@@ -1217,69 +1130,16 @@ if (import.meta.env.DEV) {
     },
     step: (frames = 1) => { // N synchronous 60Hz update()s, then one render(); ignores rAF throttling
       // bypasses pause, crash, audio and touch gates; exceptions reach the caller
-      standAside()
+      standAsideForBot()
       for (let i = 0; i < frames; i++) update(1 / 60)
       render() // keep the canvas current even when rAF is throttled
     },
     walkin: () => walkin, // the active walk-in scene, or null
     career: () => career, // banked gold and voyage count
     storage: () => ({ ok: storageOk, owner: saveOwner, resumable }), // last save write succeeded; this tab owns the save; Esc left a live world
-    audioLog: () => player.getLog(), // copy of the capped cue/music log: { id, at }[]
-    renderCue: async (id: string) => { // offline-render a cue: rms plus Goertzel energies
-      const off = new OfflineAudioContext(1, 2 * 44100, 44100)
-      synthesize(off, off.destination, id as never, 0)
-      const buf = await off.startRendering()
-      const d = buf.getChannelData(0)
-      let sum = 0
-      for (let i = 0; i < d.length; i++) sum += d[i] * d[i]
-      const rms = Math.sqrt(sum / d.length)
-      const goertzel = (freq: number) => {
-        const w = (2 * Math.PI * freq) / 44100
-        const c = 2 * Math.cos(w)
-        let s0 = 0, s1 = 0, s2 = 0
-        const n = Math.min(d.length, 44100)
-        for (let i = 0; i < n; i++) {
-          s0 = d[i] + c * s1 - s2
-          s2 = s1
-          s1 = s0
-        }
-        return Math.sqrt(s1 * s1 + s2 * s2 - c * s1 * s2) / n
-      }
-      return { rms, e660: goertzel(660), e880: goertzel(880), e120: goertzel(120), e3000: goertzel(3000) }
-    },
-    audioScene: () => ({ // soundscape inputs, derived controls and texture firing counts; hostility counts moodOf-hostile villages
-      input: sceneInput(),
-      controls: sceneControls(sceneInput()),
-      stats: player.getTextureStats(),
-    }),
-    renderTexture: async (kind: string, seconds = 3) => { // offline-render a texture: { rms, peak }
-      const off = new OfflineAudioContext(1, Math.floor(seconds * 44100), 44100)
-      synthTexture(off, off.destination, kind as TextureKind, 0.1, { midi: 57, dur: 1.6 })
-      const buf = await off.startRendering()
-      const d = buf.getChannelData(0)
-      let sum = 0
-      let peak = 0
-      for (let i = 0; i < d.length; i++) {
-        sum += d[i] * d[i]
-        peak = Math.max(peak, Math.abs(d[i]))
-      }
-      return { rms: Math.sqrt(sum / d.length), peak }
-    },
-    renderTheme: async (id: string, seconds = 4) => { // offline-render a theme's opening: { rms, peak }
-      const off = new OfflineAudioContext(1, Math.floor(seconds * 44100), 44100)
-      scheduleThemeWindow(off, off.destination, buildTheme(id as ThemeId), 0, 0, seconds)
-      const buf = await off.startRendering()
-      const d = buf.getChannelData(0)
-      let sum = 0
-      let peak = 0
-      for (let i = 0; i < d.length; i++) {
-        sum += d[i] * d[i]
-        peak = Math.max(peak, Math.abs(d[i]))
-      }
-      return { rms: Math.sqrt(sum / d.length), peak }
-    },
+    ...audioProbes(player, sceneInput), // audioLog, renderCue, audioScene, renderTexture, renderTheme
     setSeed: (s: string) => { // fresh world from seed s, back on the title ready for Enter
-      standAside()
+      standAsideForBot()
       resetInterp()
       world = newWorld(s)
       resetSession()
@@ -1304,8 +1164,8 @@ if (import.meta.env.DEV) {
 startLoop(update, present, {
   onError: (err) => {
     console.error(err)
-    crashed = true
+    life.crashed = true
     player.suspend()
   },
-  isPaused: () => paused || crashed,
+  isPaused: () => life.paused || life.crashed,
 })
