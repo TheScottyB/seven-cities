@@ -1,6 +1,6 @@
 // The pure char-grid helpers in src/art/pixels.ts. The canvas passes need a
 // DOM and are exercised in the browser, not here.
-import { gridSize, shiftLegs, shiftRows, CELL, ANCHOR_X } from '../src/art/pixels'
+import { gridSize, shiftLegs, shiftRows, rgbOf, CELL, ANCHOR_X } from '../src/art/pixels'
 
 test('mirror trick requires the anchor at the cell centre', () => {
   expect(ANCHOR_X).toBe(CELL / 2)
@@ -32,4 +32,10 @@ test('shiftLegs drops pixels pushed off the bottom, lifting the foot', () => {
 
 test('shiftRows heels only the requested band', () => {
   expect(shiftRows(['mm..', '..hh'], 0, 0, 1)).toEqual(['.mm.', '..hh'])
+})
+
+test('rgbOf decodes 6-digit hex colors into byte triples', () => {
+  expect(rgbOf('#000000')).toEqual([0, 0, 0])
+  expect(rgbOf('#f4c430')).toEqual([0xf4, 0xc4, 0x30])
+  expect(rgbOf('#ffffff')).toEqual([255, 255, 255])
 })

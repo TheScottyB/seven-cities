@@ -9,6 +9,7 @@
  * thing on screen, and gold the brightest accent.
  */
 import { TILE_PX } from './tileset'
+import { rgbOf } from './pixels'
 
 export const PAPER = '#2a2318'
 
@@ -92,10 +93,7 @@ function buildDeckle(mask: number, variant: number): HTMLCanvasElement | null {
   c.height = TILE_PX
   const g = c.getContext('2d')!
   const img = g.createImageData(TILE_PX, TILE_PX)
-  const n = parseInt(PAPER.slice(1), 16)
-  const r = (n >> 16) & 255
-  const gg = (n >> 8) & 255
-  const b = n & 255
+  const [r, gg, b] = rgbOf(PAPER)
   let s = (mask * 2654435761 + variant * 40503) >>> 0
   const rnd = () => {
     s = (s * 1664525 + 1013904223) >>> 0

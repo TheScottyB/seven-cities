@@ -1,4 +1,5 @@
 import { CITIES_OF_GOLD, type Village } from '../world/villages'
+import { tileHash } from '../world/rng'
 import { type Outfit, outfitCost, remainingBudget, PRICES, BUDGET } from '../game/outfit'
 import { TRADE_GOODS, GIFT_GOODS, effectiveTemperament, moodOf, type Mood } from '../game/encounter'
 import { bestScore, type ChronicleEntry } from '../game/chronicle'
@@ -20,12 +21,21 @@ function panel(ctx: CanvasRenderingContext2D, viewW: number, viewH: number, w: n
   return { x, y }
 }
 
-function center(ctx: CanvasRenderingContext2D, text: string, cx: number, y: number, font: string, color: string) {
+function center(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  cx: number,
+  y: number,
+  font: string,
+  color: string,
+  maxWidth?: number,
+) {
   ctx.font = font
   ctx.fillStyle = color
   ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
-  ctx.fillText(text, cx, y)
+  if (maxWidth !== undefined) ctx.fillText(text, cx, y, maxWidth)
+  else ctx.fillText(text, cx, y)
   ctx.textAlign = 'left'
 }
 
@@ -169,14 +179,17 @@ export function drawOutfitScreen(
   ctx.fillRect(0, 0, viewW, viewH)
   drawFrame(ctx, viewW, viewH)
   const cx = viewW / 2
-  center(ctx, 'OUTFIT YOUR EXPEDITION', cx, viewH / 2 - 150, font(32, true), '#f4c430')
+  const midY = Math.max(190, viewH / 2)
+  const maxW = Math.max(120, viewW - 56)
+  center(ctx, 'OUTFIT YOUR EXPEDITION', cx, midY - 150, fitFont(ctx, 'OUTFIT YOUR EXPEDITION', 32, viewW - 64), '#f4c430')
   center(
     ctx,
     `The Crown grants you ${budget} gold. Spend it well — what remains sails with you.`,
     cx,
-    viewH / 2 - 112,
+    midY - 112,
     font(15),
     '#9a9aa6',
+    maxW,
   )
 
   const rows: [keyof Outfit, string, string][] = [
@@ -185,25 +198,26 @@ export function drawOutfitScreen(
     ['crew', 'Crew', `men for the expedition  (${PRICES.crew} gold each)`],
     ['ships', 'Ships', `caravels in your fleet  (${PRICES.ships} gold each)`],
   ]
-  let y = viewH / 2 - 52
+  let y = midY - 52
   ctx.textAlign = 'left'
-  const left = cx - 260
+  const left = Math.max(28, cx - 260)
+  const valX = Math.min(left + 260, viewW - 140)
   rows.forEach(([key, label, desc], i) => {
     const sel = i === selectedRow
     ctx.font = font(sel ? 20 : 18, sel)
     ctx.fillStyle = sel ? '#f4c430' : '#c9c9d2'
     ctx.fillText(`${sel ? '> ' : '  '}${label}`, left, y)
     const valStr = `< ${String(outfit[key]).padStart(3)} >`
-    ctx.fillText(valStr, left + 260, y)
+    ctx.fillText(valStr, valX, y)
     // click targets: the label selects the row; the angle brackets adjust it
-    addHit(`outfit-row-${i}`, left - 8, y - 20, 240, 28)
+    addHit(`outfit-row-${i}`, left - 8, y - 20, Math.max(120, valX - left - 16), 28)
     const chW = ctx.measureText('<').width
     const valW = ctx.measureText(valStr).width
-    addHit(`outfit-dec-${i}`, left + 250, y - 20, chW + 20, 28)
-    addHit(`outfit-inc-${i}`, left + 260 + valW - chW - 10, y - 20, chW + 20, 28)
+    addHit(`outfit-dec-${i}`, valX - 10, y - 20, chW + 20, 28)
+    addHit(`outfit-inc-${i}`, valX + valW - chW - 10, y - 20, chW + 20, 28)
     ctx.font = font(13)
     ctx.fillStyle = '#7a7a86'
-    ctx.fillText(desc, left + 24, y + 20)
+    ctx.fillText(desc, left + 24, y + 20, Math.max(100, viewW - left - 52))
     y += 58
   })
 
@@ -214,6 +228,7 @@ export function drawOutfitScreen(
     y + 8,
     font(17),
     '#e0d18a',
+    maxW,
   )
   const perDay = dailyAppetite(outfit.crew)
   const days = perDay > 0 ? outfit.food / perDay : 0
@@ -227,12 +242,13 @@ export function drawOutfitScreen(
     y + 34,
     font(14),
     short ? '#c0504d' : '#7a9a7a',
+    maxW,
   )
   const go = '↑↓ choose   ←→ adjust   ENTER set sail'
-  center(ctx, go, cx, y + 62, font(15), '#7fd17f')
+  center(ctx, go, cx, y + 62, font(15), '#7fd17f', maxW)
   centerHit(ctx, 'outfit-go', go, cx, y + 62, font(15))
   if (replacesSave) {
-    center(ctx, 'Setting sail replaces your saved expedition. Esc to go back.', cx, y + 88, font(14), '#c9a94f')
+    center(ctx, 'Setting sail replaces your saved expedition. Esc to go back.', cx, y + 88, font(14), '#c9a94f', maxW)
   }
 }
 
@@ -302,8 +318,10 @@ export function drawStartScreen(
   }
   fit(subtitle, font(18))
   for (const l of lines) fit(l.text, font(16))
-  fit(chronicleHeading(chronicle), font(15, true))
-  for (const r of chronRows) fit(r, font(14))
+  if (wantRows) {
+    fit(chronicleHeading(chronicle), font(15, true))
+    for (const r of chronRows) fit(r, font(14))
+  }
   const sz = (px: number) => Math.max(8, Math.floor(px * k))
 
   drawCompassRose(ctx, cx, top + 34, 34)
@@ -354,26 +372,37 @@ export function drawSpainScreen(
   ctx.fillRect(0, 0, viewW, viewH)
   drawFrame(ctx, viewW, viewH)
   const cx = viewW / 2
-  drawCrest(ctx, cx, viewH / 2 - 216, 42) // shield tip clears the title's cap height
+  const maxW = Math.max(120, viewW - 56)
+  // pull the court up slightly on short windows so the harbor below stays clear
+  const midY = Math.max(292, Math.min(viewH / 2, viewH - 320))
+  drawCrest(ctx, cx, midY - 216, 42) // shield tip clears the title's cap height
   const title = rankTitle(career.banked)
-  center(ctx, 'SPAIN — THE COURT OF THE CROWN', cx, viewH / 2 - 170, font(32, true), '#f4c430')
+  center(
+    ctx,
+    'SPAIN — THE COURT OF THE CROWN',
+    cx,
+    midY - 170,
+    fitFont(ctx, 'SPAIN — THE COURT OF THE CROWN', 32, viewW - 64),
+    '#f4c430',
+  )
   center(
     ctx,
     `Voyage ${career.voyages} complete. You banked ${justBanked} gold with the Crown.`,
     cx,
-    viewH / 2 - 128,
+    midY - 128,
     font(16),
     '#e0d18a',
+    maxW,
   )
   if (promoted) {
     // the moment glows: a new title from the Crown's own hand
     ctx.save()
     ctx.shadowColor = 'rgba(127,209,127,0.9)'
     ctx.shadowBlur = 10 + 6 * Math.sin(t * 4)
-    center(ctx, `The Crown elevates you: ${title.toUpperCase()}!`, cx, viewH / 2 - 94, font(20, true), '#7fd17f')
+    center(ctx, `The Crown elevates you: ${title.toUpperCase()}!`, cx, midY - 94, font(20, true), '#7fd17f', maxW)
     ctx.restore()
   } else {
-    center(ctx, `Your rank: ${title}`, cx, viewH / 2 - 94, font(18), '#c9c9d2')
+    center(ctx, `Your rank: ${title}`, cx, midY - 94, font(18), '#c9c9d2', maxW)
   }
   const idx = rankIndex(career.banked)
   const next = idx < RANKS.length - 1 ? RANKS[idx + 1] : null
@@ -382,9 +411,9 @@ export function drawSpainScreen(
     `Cities of Gold found: ${state.citiesFound}/${CITIES_OF_GOLD}    Villages contacted: ${state.villagesContacted}`,
     `Word of your deeds — fear among the peoples: ${Math.floor(state.fear)}`,
   ]
-  let y = viewH / 2 - 52
+  let y = midY - 52
   for (const l of lines) {
-    center(ctx, l, cx, y, font(15), '#9a9aa6')
+    center(ctx, l, cx, y, font(15), '#9a9aa6', maxW)
     y += 26
   }
 
@@ -392,9 +421,9 @@ export function drawSpainScreen(
   if (next) {
     const prevMin = RANKS[idx].min
     const frac = Math.max(0, Math.min(1, (career.banked - prevMin) / (next.min - prevMin)))
-    const bw = 320
+    const bw = Math.min(320, viewW - 64)
     const bx = cx - bw / 2
-    center(ctx, `Next title: ${next.title} at ${next.min} gold`, cx, y + 6, font(14), '#8a8a94')
+    center(ctx, `Next title: ${next.title} at ${next.min} gold`, cx, y + 6, font(14), '#8a8a94', maxW)
     ctx.fillStyle = '#22222c'
     ctx.fillRect(bx, y + 14, bw, 10)
     ctx.fillStyle = '#c9a94f'
@@ -403,24 +432,25 @@ export function drawSpainScreen(
     ctx.lineWidth = 1
     ctx.strokeRect(bx + 0.5, y + 14.5, bw - 1, 9)
   } else {
-    center(ctx, 'No higher title remains — the Crown has run out of honors', cx, y + 12, font(14), '#c9a94f')
+    center(ctx, 'No higher title remains — the Crown has run out of honors', cx, y + 12, font(14), '#c9a94f', maxW)
   }
   y += 44
-  center(ctx, `The Crown will fund your next voyage: ${budgetFor(career.banked)} gold`, cx, y + 6, font(15), '#9a9aa6')
+  center(ctx, `The Crown will fund your next voyage: ${budgetFor(career.banked)} gold`, cx, y + 6, font(15), '#9a9aa6', maxW)
   // what happens to this voyage's stores; breaks at the semicolon on narrow screens
   const leftoverFont = font(13)
   const leftover = ['Leftover stores stay behind;', 'your caravels return to Palos and sail again from the landing.']
   ctx.font = leftoverFont
   const leftoverLines = ctx.measureText(leftover.join(' ')).width <= viewW - 96 ? [leftover.join(' ')] : leftover
-  leftoverLines.forEach((l, i) => center(ctx, l, cx, y + 28 + i * 17, leftoverFont, '#8a8a94'))
+  leftoverLines.forEach((l, i) => center(ctx, l, cx, y + 28 + i * 17, leftoverFont, '#8a8a94', maxW))
   const goY = y + 56 + (leftoverLines.length - 1) * 17
 
   const go = 'Press ENTER to outfit your next voyage'
-  center(ctx, go, cx, goY, font(16), hovered('spain-go') ? '#a8f0a8' : '#7fd17f')
+  center(ctx, go, cx, goY, font(16), hovered('spain-go') ? '#a8f0a8' : '#7fd17f', maxW)
   centerHit(ctx, 'spain-go', go, cx, goY, font(16))
 
-  // --- the harbor of Palos, waiting below the court -------------------------
+  // --- the harbor of Palos, waiting below the court (yields on very short windows) ---
   const hy = viewH - 132 // waterline
+  if (goY + 18 > hy - 40) return
   ctx.save()
   ctx.beginPath()
   ctx.rect(24, hy - 60, viewW - 48, 160)
@@ -498,7 +528,7 @@ export function drawEncounter(
   ctx.clip()
   ctx.fillStyle = MOOD_GROUND[mood]
   ctx.fillRect(x + 14, gy, w - 28, gh)
-  const rng0 = ((v.x * 73856093) ^ (v.y * 19349663)) >>> 0
+  const rng0 = tileHash(v.x, v.y)
   ctx.fillStyle = 'rgba(20,28,16,0.5)'
   for (let i = 0; i < 40; i++) {
     const hx = x + 14 + ((rng0 >> (i % 24)) * 31 + i * 137) % (w - 28)
@@ -630,13 +660,15 @@ export function drawGameOver(
   }
   drawFrame(ctx, viewW, viewH)
   const cx = viewW / 2
+  const maxW = Math.max(120, viewW - 56)
 
   // the seven cities, tallied: gold for each one found, ash for the rest
   const cities = summary.cities
   const arcY = viewH / 2 - 128
   const mid = (CITIES_OF_GOLD - 1) / 2
+  const spacing = Math.min(64, (viewW - 96) / (CITIES_OF_GOLD - 1))
   for (let i = 0; i < CITIES_OF_GOLD; i++) {
-    const ax = cx + (i - mid) * 64
+    const ax = cx + (i - mid) * spacing
     const ay = arcY + (i - mid) * (i - mid) * 3.4 // outer cities dip — a strand of beads
     const found = i < cities
     ctx.save()
@@ -667,15 +699,15 @@ export function drawGameOver(
     ctx.save()
     ctx.shadowColor = 'rgba(244,196,48,0.8)'
     ctx.shadowBlur = 12 + 5 * Math.sin(t * 2.6)
-    center(ctx, 'THE SEVEN CITIES ARE YOURS', cx, viewH / 2 - 40, font(36, true), '#f4c430')
+    center(ctx, 'THE SEVEN CITIES ARE YOURS', cx, viewH / 2 - 40, fitFont(ctx, 'THE SEVEN CITIES ARE YOURS', 36, viewW - 64), '#f4c430')
     ctx.restore()
-    center(ctx, 'Glory and gold beyond measure.', cx, viewH / 2 - 6, font(18), '#e0d18a')
+    center(ctx, 'Glory and gold beyond measure.', cx, viewH / 2 - 6, font(18), '#e0d18a', maxW)
   } else {
-    center(ctx, 'THE EXPEDITION IS LOST', cx, viewH / 2 - 40, font(36, true), '#c0504d')
-    center(ctx, 'Your crew will chart no more. The sea keeps its secrets.', cx, viewH / 2 - 6, font(18), '#c9c9d2')
+    center(ctx, 'THE EXPEDITION IS LOST', cx, viewH / 2 - 40, fitFont(ctx, 'THE EXPEDITION IS LOST', 36, viewW - 64), '#c0504d')
+    center(ctx, 'Your crew will chart no more. The sea keeps its secrets.', cx, viewH / 2 - 6, font(18), '#c9c9d2', maxW)
   }
 
-  center(ctx, `Final score: ${score}`, cx, viewH / 2 + 40, font(22), '#ffffff')
+  center(ctx, `Final score: ${score}`, cx, viewH / 2 + 40, font(22), '#ffffff', maxW)
   // the reckoning, item by item — how the score came to be
   const p = summary.parts
   const terms = [
@@ -689,10 +721,10 @@ export function drawGameOver(
   ctx.font = termsFont
   const wide = terms.join('   ·   ')
   const reckoning = ctx.measureText(wide).width <= viewW - 48 ? wide : terms.join(' · ')
-  center(ctx, reckoning, cx, viewH / 2 + 66, termsFont, '#8a8a94')
+  center(ctx, reckoning, cx, viewH / 2 + 66, termsFont, '#8a8a94', maxW)
   const standing = `${rankTitle(career.banked)} · ${career.voyages} ${career.voyages === 1 ? 'voyage' : 'voyages'} completed · ${career.banked} gold banked`
-  center(ctx, standing, cx, viewH / 2 + 94, font(15), '#c9a94f')
+  center(ctx, standing, cx, viewH / 2 + 94, font(15), '#c9a94f', maxW)
   const go = 'Press ENTER for a new expedition'
-  center(ctx, go, cx, viewH / 2 + 132, font(16), hovered('over-restart') ? '#a8f0a8' : '#7fd17f')
+  center(ctx, go, cx, viewH / 2 + 132, font(16), hovered('over-restart') ? '#a8f0a8' : '#7fd17f', maxW)
   centerHit(ctx, 'over-restart', go, cx, viewH / 2 + 132, font(16))
 }

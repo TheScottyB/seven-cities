@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AudioPlayer } from '../src/audio/player'
+import { noiseBuffer } from '../src/audio/texture'
 
 describe('the cue log', () => {
   it('never grows past 300 entries', () => {
@@ -195,5 +196,39 @@ describe('the ambience bed', () => {
     p.play([{ id: 'amb-none' }])
     expect(fake.nodes.length).toBe(before + river.length)
     for (const n of river.filter((n) => n.kind === 'src' || n.kind === 'osc')) expect(n.stoppedAt).toBe(11.5)
+  })
+
+  it('an ambient bed queued before unlock starts as soon as unlock creates the context', () => {
+    vi.useFakeTimers()
+    const fake = installFakeAudio()
+    const p = new AudioPlayer()
+    p.play([{ id: 'amb-sea' }])
+    expect(fake.nodes).toEqual([])
+    p.unlock()
+    expect(fake.nodes.filter((n) => n.kind === 'src')).toHaveLength(1)
+    expect(fake.nodes.filter((n) => n.kind === 'osc')).toHaveLength(2)
+  })
+
+  it('noiseBuffer caches per AudioContext and reproduces identical samples across contexts', () => {
+    let created = 0
+    const makeCtx = () =>
+      ({
+        sampleRate: 8000,
+        createBuffer: (_ch: number, len: number) => {
+          created++
+          const data = new Float32Array(len)
+          return { getChannelData: () => data }
+        },
+      }) as unknown as BaseAudioContext
+    const ctx1 = makeCtx()
+    const a = noiseBuffer(ctx1, 0.5)
+    const b = noiseBuffer(ctx1, 2)
+    expect(b).toBe(a)
+    expect(created).toBe(1)
+
+    const ctx2 = makeCtx()
+    const c = noiseBuffer(ctx2, 0.5)
+    expect(c).not.toBe(a)
+    expect(Array.from(c.getChannelData(0).slice(0, 64))).toEqual(Array.from(a.getChannelData(0).slice(0, 64)))
   })
 })

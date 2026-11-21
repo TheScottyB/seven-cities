@@ -23,3 +23,8 @@ test('every tile has a color', () => {
     expect(tileInfo(key as number).color).toMatch(/^#[0-9a-f]{6}$/i)
   }
 })
+
+test('unknown tile ids fall back safely to impassable ocean', () => {
+  expect(isWalkable(999)).toBe(false)
+  expect(tileInfo(999)).toEqual(tileInfo(TILE.OCEAN))
+})

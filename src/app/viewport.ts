@@ -33,11 +33,11 @@ export function createViewport(
     cssH: 0,
     devZoom: 2,
     resize: () => {
-      view.dpr = window.devicePixelRatio || 1
-      view.cssW = window.innerWidth
-      view.cssH = window.innerHeight
-      canvas.width = Math.round(view.cssW * view.dpr)
-      canvas.height = Math.round(view.cssH * view.dpr)
+      view.dpr = Math.max(0.5, window.devicePixelRatio || 1)
+      view.cssW = Math.max(1, window.innerWidth)
+      view.cssH = Math.max(1, window.innerHeight)
+      canvas.width = Math.max(1, Math.round(view.cssW * view.dpr))
+      canvas.height = Math.max(1, Math.round(view.cssH * view.dpr))
       canvas.style.width = view.cssW + 'px'
       canvas.style.height = view.cssH + 'px'
       view.devZoom = Math.max(2, Math.round(zoomFor(view.cssW) * view.dpr))

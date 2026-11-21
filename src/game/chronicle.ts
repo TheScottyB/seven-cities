@@ -41,10 +41,13 @@ export function deserializeChronicle(json: string): ChronicleEntry[] {
         !!e &&
         typeof e.seedStr === 'string' &&
         typeof e.won === 'boolean' &&
-        typeof e.score === 'number' &&
-        typeof e.gold === 'number' &&
-        typeof e.day === 'number' &&
-        typeof e.cities === 'number',
+        Number.isFinite(e.score) &&
+        Number.isFinite(e.gold) &&
+        e.gold >= 0 &&
+        Number.isFinite(e.day) &&
+        e.day >= 1 &&
+        Number.isFinite(e.cities) &&
+        e.cities >= 0,
     )
   } catch {
     return []

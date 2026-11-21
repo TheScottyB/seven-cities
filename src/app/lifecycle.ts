@@ -56,6 +56,22 @@ function endPause(lc: Lifecycle): 'unpause' {
   return 'unpause'
 }
 
+const BARE_MODIFIERS = new Set(['Shift', 'Control', 'Alt', 'Meta'])
+
+/**
+ * Browser/OS shortcuts (Cmd+Tab, Ctrl+R, Alt+Tab) and bare modifier presses
+ * must not unpause the game, clear touch-only mode, or consume the first audio
+ * unlock gesture. Shift+letter (e.g. Shift+M) has key === 'M' and passes through.
+ */
+export function isIgnoredKey(e: {
+  key?: string
+  ctrlKey?: boolean
+  metaKey?: boolean
+  altKey?: boolean
+}): boolean {
+  return !!(e.ctrlKey || e.metaKey || e.altKey || (e.key && BARE_MODIFIERS.has(e.key)))
+}
+
 export function routeKey(lc: Lifecycle, trusted: boolean, unlock: () => boolean): KeyRoute {
   lc.touchOnly = false
   offerGesture(lc, trusted, unlock)

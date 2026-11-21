@@ -9,6 +9,7 @@ import { drawVillage, drawCanoe, drawFort, drawShadow } from '../art/sprites'
 import { drawExplorerSprite, drawShipSprite, type SpriteBank } from '../art/spritebank'
 import type { Outpost } from '../game/outposts'
 import { TILE } from '../world/tiles'
+import { tileHash } from '../world/rng'
 import { PHASES, SHADES, type Relief } from '../art/relief'
 import type { EdgeSet } from '../art/edges'
 import { paperPattern, type DeckleSet } from '../art/paper'
@@ -44,11 +45,6 @@ const reduceMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-red
 
 /** How close (in tiles) the explorer must be for a tile to count as "in view". */
 const VIEW_RADIUS = 5
-
-/** deterministic per-tile hash for variant selection */
-function tileHash(x: number, y: number): number {
-  return ((x * 73856093) ^ (y * 19349663)) >>> 0
-}
 
 /**
  * A 256-entry sine table. The wind and the surf both want a sine of something

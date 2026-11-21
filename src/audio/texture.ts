@@ -19,8 +19,20 @@ export interface TextureOpts {
   dur?: number
 }
 
+const noiseCache = new WeakMap<BaseAudioContext, { buf: AudioBuffer; samples: number }>()
+
+/**
+ * Deterministic white noise, cached per AudioContext so repeated textures and
+ * cues reuse one buffer instead of allocating and filling tens of thousands of
+ * samples on each firing. Because the LCG always starts from the same seed,
+ * every prefix is bit-identical to a fresh buffer of that length.
+ */
 export function noiseBuffer(ctx: BaseAudioContext, seconds: number): AudioBuffer {
-  const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * seconds), ctx.sampleRate)
+  const needed = Math.max(1, Math.floor(ctx.sampleRate * seconds))
+  const cached = noiseCache.get(ctx)
+  if (cached && cached.samples >= needed) return cached.buf
+  const samples = Math.max(needed, Math.floor(ctx.sampleRate * 4))
+  const buf = ctx.createBuffer(1, samples, ctx.sampleRate)
   const d = buf.getChannelData(0)
   let s = 1234567
   for (let i = 0; i < d.length; i++) {
@@ -28,6 +40,7 @@ export function noiseBuffer(ctx: BaseAudioContext, seconds: number): AudioBuffer
     s = (s * 1664525 + 1013904223) >>> 0
     d[i] = (s / 4294967296) * 2 - 1
   }
+  noiseCache.set(ctx, { buf, samples })
   return buf
 }
 

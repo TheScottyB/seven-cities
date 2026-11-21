@@ -172,6 +172,7 @@ export class AudioPlayer {
   private master: GainNode | null = null
   private bed: Bed | null = null
   private ambientId = 'amb-none'
+  private pendingAmbient: string | null = null
   private muted = false
   private log: CueLogEntry[] = []
   private chirpTimer: ReturnType<typeof setInterval> | null = null
@@ -204,11 +205,14 @@ export class AudioPlayer {
       comp.release.value = 0.25
       this.master.connect(comp)
       comp.connect(this.ctx.destination)
-      // if a theme was chosen while audio was still locked, strike it up now
+      // if a theme or ambience bed was chosen while audio was still locked, strike it up now
       const pending = this.themeId
       this.themeId = null
       this.theme = null
       if (pending) this.setTheme(pending)
+      const pendingAmb = this.pendingAmbient
+      this.pendingAmbient = null
+      if (pendingAmb) this.setAmbient(pendingAmb)
       // runs for the page's lifetime; nothing ever tears the player down
       setInterval(() => this.textureTick(), 250)
       return true
@@ -220,7 +224,7 @@ export class AudioPlayer {
 
   /** Pause the audio clock (tab hidden, game paused). Never creates a context. */
   suspend(): void {
-    if (this.ctx) void this.ctx.suspend()
+    if (this.ctx) void this.ctx.suspend().catch(() => {})
   }
 
   /** Undo suspend() or an OS interruption. Never creates a context. */
@@ -232,7 +236,7 @@ export class AudioPlayer {
     // 'interrupted' (iOS calls, other apps) is missing from TS's AudioContextState
     const state: string | undefined = this.ctx?.state
     if (!this.ctx || (state !== 'suspended' && state !== 'interrupted')) return false
-    void this.ctx.resume()
+    void this.ctx.resume().catch(() => {})
     return true
   }
 
@@ -349,7 +353,10 @@ export class AudioPlayer {
   play(cues: AudioCue[]): void {
     for (const cue of cues) {
       this.pushLog(cue.id)
-      if (!this.ctx || !this.master) continue
+      if (!this.ctx || !this.master) {
+        if (cue.id.startsWith('amb-')) this.pendingAmbient = cue.id
+        continue
+      }
       if (cue.id.startsWith('amb-')) this.setAmbient(cue.id)
       else
         // a whisper of detune and level variation so the hundredth trade
@@ -367,9 +374,6 @@ export class AudioPlayer {
     if (!this.ctx || !this.master || this.muted || this.ctx.state !== 'running') return
     const t = this.ctx.currentTime
     const base = 2600 + Math.random() * 1200
-    const g = this.ctx.createGain()
-    g.gain.value = 1
-    g.connect(this.master)
     for (let i = 0; i < 2 + Math.floor(Math.random() * 2); i++) {
       const o = this.ctx.createOscillator()
       o.type = 'sine'
@@ -381,7 +385,7 @@ export class AudioPlayer {
       e.gain.linearRampToValueAtTime(0.05, at + 0.008)
       e.gain.exponentialRampToValueAtTime(0.001, at + 0.06)
       o.connect(e)
-      e.connect(g)
+      e.connect(this.master)
       o.start(at)
       o.stop(at + 0.1)
     }

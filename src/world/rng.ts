@@ -21,3 +21,8 @@ export function seedFromString(s: string): number {
   }
   return h >>> 0
 }
+
+/** Deterministic 32-bit spatial hash for a tile or village coordinate. */
+export function tileHash(x: number, y: number): number {
+  return ((x * 73856093) ^ (y * 19349663)) >>> 0
+}

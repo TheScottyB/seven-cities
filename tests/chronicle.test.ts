@@ -64,3 +64,22 @@ test('invalid entries are dropped, valid kept', () => {
   expect(back.length).toBe(2)
   expect(back[1].score).toBe(7)
 })
+
+test('non-finite chronicle numbers (e.g. 1e999 -> Infinity) are dropped', () => {
+  const raw = JSON.stringify([entry({ score: 123 }), entry({ score: 456 })]).replace('123', '1e999')
+  const back = deserializeChronicle(raw)
+  expect(back).toHaveLength(1)
+  expect(back[0].score).toBe(456)
+})
+
+test('negative gold, day < 1, or negative cities are dropped while negative score is kept', () => {
+  const json = JSON.stringify([
+    entry({ score: -50, gold: 0, day: 1, cities: 0 }),
+    entry({ gold: -1 }),
+    entry({ day: 0 }),
+    entry({ cities: -1 }),
+  ])
+  const back = deserializeChronicle(json)
+  expect(back).toHaveLength(1)
+  expect(back[0].score).toBe(-50)
+})

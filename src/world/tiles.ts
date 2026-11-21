@@ -31,9 +31,9 @@ const INFO: Record<number, TileInfo> = {
 }
 
 export function tileInfo(t: number): TileInfo {
-  return INFO[t]
+  return INFO[t] ?? INFO[TILE.OCEAN]
 }
 
 export function isWalkable(t: number): boolean {
-  return INFO[t].walkable
+  return INFO[t]?.walkable === true
 }

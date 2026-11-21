@@ -13,6 +13,7 @@
  */
 import { TILE, tileInfo } from '../world/tiles'
 import { TILE_PX } from './tileset'
+import { rgbOf } from './pixels'
 
 /**
  * How far the fringe eats into a tile. Three pixels of a sixteen-pixel tile —
@@ -63,11 +64,7 @@ function buildOverlay(other: number, mask: number): HTMLCanvasElement | null {
   c.height = TILE_PX
   const g = c.getContext('2d')!
   const img = g.createImageData(TILE_PX, TILE_PX)
-  const hex = tileInfo(other).color
-  const n = parseInt(hex.slice(1), 16)
-  const r = (n >> 16) & 255
-  const gg = (n >> 8) & 255
-  const b = n & 255
+  const [r, gg, b] = rgbOf(tileInfo(other).color)
   let any = false
 
   for (let y = 0; y < TILE_PX; y++) {

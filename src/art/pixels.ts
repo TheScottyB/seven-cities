@@ -87,6 +87,12 @@ export function shiftRows(rows: Grid, rowLo: number, rowHi: number, dx: number):
   })
 }
 
+/** Parse a 6-digit `#rrggbb` hex colour into `[r, g, b]` bytes. */
+export function rgbOf(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
 // ---------------------------------------------------------------------------
 // canvas primitives (DOM — only ever called from buildSpriteBank())
 // ---------------------------------------------------------------------------
@@ -135,11 +141,6 @@ function harden(c: HTMLCanvasElement, threshold = 128): void {
   const d = img.data
   for (let i = 3; i < d.length; i += 4) d[i] = d[i] < threshold ? 0 : 255
   g.putImageData(img, 0, 0)
-}
-
-function rgbOf(hex: string): [number, number, number] {
-  const n = parseInt(hex.slice(1), 16)
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
 }
 
 /**

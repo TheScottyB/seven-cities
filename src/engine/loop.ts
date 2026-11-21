@@ -35,7 +35,7 @@ export function startLoop(
   function frame() {
     if (!running) return
     const now = performance.now() / 1000
-    const dt = Math.min(now - last, 0.25) // clamp big pauses (tab switch)
+    const dt = Math.max(0, Math.min(now - last, 0.25)) // clamp big pauses (tab switch) and non-monotonic ticks
     last = now
     try {
       if (opts.isPaused?.()) {

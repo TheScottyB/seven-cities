@@ -1,6 +1,7 @@
 import { TILE, tileInfo } from '../world/tiles'
 import { makeRng } from '../world/rng'
 import { DECORS, PHASES, SHADES, framesFor, tileIndex } from './relief'
+import { rgbOf } from './pixels'
 
 export const TILE_PX = 16
 
@@ -33,14 +34,11 @@ function makeCanvas(): [HTMLCanvasElement, CanvasRenderingContext2D] {
 
 /** shade the base color: amount in [-1, 1], negative darkens */
 function shade(hex: string, amount: number): string {
-  const n = parseInt(hex.slice(1), 16)
   const ch = (v: number) => {
     const s = amount < 0 ? v * (1 + amount) : v + (255 - v) * amount
     return Math.max(0, Math.min(255, Math.round(s)))
   }
-  const r = ch((n >> 16) & 255)
-  const g = ch((n >> 8) & 255)
-  const b = ch(n & 255)
+  const [r, g, b] = rgbOf(hex).map(ch)
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`
 }
 
@@ -50,7 +48,6 @@ function shade(hex: string, amount: number): string {
  * blue hard on a grey mountain and the shadowed faces turn to ice.
  */
 function relight(hex: string, amount: number): string {
-  const n = parseInt(hex.slice(1), 16)
   const warm = [1.05, 1.0, 0.92]
   const cool = [0.95, 0.985, 1.035]
   const k = amount >= 0 ? warm : cool
@@ -58,9 +55,7 @@ function relight(hex: string, amount: number): string {
     const lit = amount < 0 ? v * (1 + amount * 0.55) : v + (255 - v) * amount * 0.5
     return Math.max(0, Math.min(255, Math.round(lit * k[i])))
   }
-  const r = ch((n >> 16) & 255, 0)
-  const g = ch((n >> 8) & 255, 1)
-  const b = ch(n & 255, 2)
+  const [r, g, b] = rgbOf(hex).map(ch)
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`
 }
 

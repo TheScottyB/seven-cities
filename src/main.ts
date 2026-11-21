@@ -73,7 +73,7 @@ import { musicFor } from './audio/score'
 import { sceneControls, type SceneInput } from './audio/scene'
 import { drawWalkin } from './ui/walkin'
 import { defaultOutfit, adjustOutfit, remainingBudget, type Outfit } from './game/outfit'
-import { unpackBits, mapFingerprint, type SaveData, type SavePhase } from './game/save'
+import { unpackBits, mapFingerprint, validateSaveForWorld, type SaveData, type SavePhase } from './game/save'
 import type { ChronicleEntry } from './game/chronicle'
 import { buildTileset } from './art/tileset'
 import { Input } from './engine/input'
@@ -105,7 +105,7 @@ import {
   appendChronicle,
 } from './app/storage'
 import { createViewport } from './app/viewport'
-import { makeLifecycle, routeKey, routeClick, pauseForFocus, takeFirstUnlock, standAside } from './app/lifecycle'
+import { makeLifecycle, isIgnoredKey, routeKey, routeClick, pauseForFocus, takeFirstUnlock, standAside } from './app/lifecycle'
 import { audioProbes } from './app/devhooks'
 
 const REVEAL_RADIUS = 7
@@ -128,8 +128,17 @@ const resetInterp = () => {
   interpValid = false
 }
 
-/** dpr, the CSS-px view and the world's device zoom; a resize also drops the interpolation. */
-const view = createViewport(canvas, ctx, resetInterp)
+let worldReady = false
+/** Centre and clamp a world's camera to the current canvas dimensions and zoom. */
+function centerWorldCam(w: World) {
+  centerCamera(w.cam, w.explorer.x, w.explorer.y, canvas.width, canvas.height, w.map.width, w.map.height, view.devZoom)
+}
+
+/** dpr, the CSS-px view and the world's device zoom; a resize also drops interpolation and re-clamps the camera. */
+const view = createViewport(canvas, ctx, () => {
+  resetInterp()
+  if (worldReady) centerWorldCam(world)
+})
 view.resize()
 // a browser zoom changes devicePixelRatio and fires this too
 window.addEventListener('resize', view.resize)
@@ -173,6 +182,8 @@ function buildWorldArt(map: ReturnType<typeof generateMap>): WorldArt {
 }
 let screen: Screen = 'start'
 let world: World = newWorld('1492')
+worldReady = true
+centerWorldCam(world)
 let outfit: Outfit = defaultOutfit()
 let outfitRow = 0
 let encounter: Village | null = null
@@ -236,13 +247,13 @@ function saveIfPlaying() {
 
 // registered after Input's own listener, so the key is already queued when a pause drops it
 window.addEventListener('keydown', (e) => {
+  if (isIgnoredKey(e)) return
   const route = routeKey(life, e.isTrusted, unlockAudio)
   if (route === 'recovery') {
     // update() no longer runs; the recovery card's two keys are read here
-    if (e.ctrlKey || e.metaKey || e.altKey) return
     if (e.key === 'Escape') location.reload()
     else if (e.key?.toLowerCase() === 'x') {
-      clearSave()
+      removeSave()
       location.reload()
     }
     return
@@ -250,14 +261,17 @@ window.addEventListener('keydown', (e) => {
   if (route === 'unpause') unpause()
 })
 window.addEventListener('blur', () => {
-  if (pauseForFocus(life, screen) && screen === 'playing') saveGame()
+  if (pauseForFocus(life, screen)) {
+    saveIfPlaying()
+    player.suspend()
+  }
 })
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     pauseForFocus(life, screen)
     saveIfPlaying()
     player.suspend()
-  } else if (!life.crashed) {
+  } else if (!life.crashed && !life.paused) {
     player.resume()
   }
 })
@@ -371,6 +385,7 @@ function embark() {
   world = newWorld(world.seedStr)
   claimSave(true) // a fresh expedition takes the slot even if another tab wrote meanwhile
   applyOutfit()
+  centerWorldCam(world)
   resetInterp()
   screen = 'playing'
 }
@@ -380,10 +395,14 @@ function embarkVoyage() {
   const { map } = world
   world.explorer.x = map.landing.x + 0.5
   world.explorer.y = map.landing.y + 0.5
+  world.explorer.facing = Facing.S
+  world.explorer.gait = 0
+  world.explorer.moving = false
   world.sailing = false
   world.state.morale = 100 // a fresh crew signs on
   applyOutfit()
   reveal(world.fog, Math.floor(world.explorer.x), Math.floor(world.explorer.y), REVEAL_RADIUS)
+  centerWorldCam(world)
   resetInterp()
   screen = 'playing'
 }
@@ -492,24 +511,14 @@ function clearSave() {
   removeSave()
 }
 
-const inMap = (map: World['map'], p: { x: number; y: number }) =>
-  p.x >= 0 && p.y >= 0 && p.x < map.width && p.y < map.height
-
 /**
  * Rebuild the saved expedition on a freshly generated world. Throws when the
  * save does not fit that world; nothing module-level changes until it succeeds.
  */
-function restoreWorld(save: SaveData): World {
+function restoreWorld(save: SaveData): { world: World; career: Career } {
   const w = newWorld(save.seedStr)
-  const { map } = w
-  if (
-    save.villages.length !== w.villages.length ||
-    mapFingerprint(map.tiles, map.width, map.height, w.villages) !== save.mapHash
-  ) {
-    throw new Error('save was taken on a different world')
-  }
-  if (atob(save.fogSeenB64).length !== Math.ceil(w.fog.seen.length / 8)) throw new Error('fog size mismatch')
-  if (!inMap(map, save.explorer) || !save.ships.every((sh) => inMap(map, sh))) throw new Error('position off the map')
+  const mismatch = validateSaveForWorld(save, w.map, w.villages, w.fog.seen.length)
+  if (mismatch) throw new Error(mismatch)
 
   w.state = { ...save.state }
   w.explorer.x = save.explorer.x
@@ -527,11 +536,11 @@ function restoreWorld(save: SaveData): World {
     const v = w.villages[i]
     v.visited = sv.visited === true
     v.depleted = sv.depleted === true
-    if (Number.isFinite(sv.temperament)) v.temperament = sv.temperament
+    if (Number.isFinite(sv.temperament)) v.temperament = Math.max(0, Math.min(1, sv.temperament))
   })
   w.cam = { x: w.explorer.x, y: w.explorer.y }
-  career = { ...save.career }
-  return w
+  centerWorldCam(w)
+  return { world: w, career: { ...save.career } }
 }
 
 /** C on the title: the live world after Esc, else the stored save. */
@@ -546,7 +555,9 @@ function continueExpedition() {
   if (!save) return
   claimSave(true)
   try {
-    world = restoreWorld(save)
+    const restored = restoreWorld(save)
+    world = restored.world
+    career = restored.career
   } catch {
     clearSave()
     flash = { text: 'Your saved expedition could not be read.', t: 3.5 }
@@ -656,13 +667,21 @@ function updateOutfit(click: string | null) {
   if (input.pressed('up')) outfitRow = (outfitRow + fields.length - 1) % fields.length
   if (input.pressed('down')) outfitRow = (outfitRow + 1) % fields.length
   const budget = budgetFor(career.banked)
-  if (click?.startsWith('outfit-row-')) outfitRow = Number(click.slice('outfit-row-'.length))
-  if (click?.startsWith('outfit-dec-')) {
-    outfitRow = Number(click.slice('outfit-dec-'.length))
+  const parseRow = (prefix: string): number | null => {
+    if (!click?.startsWith(prefix)) return null
+    const idx = Number(click.slice(prefix.length))
+    return Number.isInteger(idx) && idx >= 0 && idx < fields.length ? idx : null
+  }
+  const hitRow = parseRow('outfit-row-')
+  if (hitRow !== null) outfitRow = hitRow
+  const decRow = parseRow('outfit-dec-')
+  if (decRow !== null) {
+    outfitRow = decRow
     outfit = adjustOutfit(outfit, fields[outfitRow], -1, budget)
   }
-  if (click?.startsWith('outfit-inc-')) {
-    outfitRow = Number(click.slice('outfit-inc-'.length))
+  const incRow = parseRow('outfit-inc-')
+  if (incRow !== null) {
+    outfitRow = incRow
     outfit = adjustOutfit(outfit, fields[outfitRow], 1, budget)
   }
   if (input.pressedOrRepeat('left')) outfit = adjustOutfit(outfit, fields[outfitRow], -1, budget)
@@ -789,7 +808,7 @@ function updatePlaying(dt: number, click: string | null) {
     }
   }
 
-  centerCamera(world.cam, explorer.x, explorer.y, canvas.width, canvas.height, map.width, map.height, view.devZoom)
+  centerWorldCam(world)
   // after a jump this tick, the next frame starts from where things landed
   prevCam = interpValid ? fromCam : { x: world.cam.x, y: world.cam.y }
   prevPos = interpValid ? fromPos : { x: explorer.x, y: explorer.y }
@@ -895,7 +914,7 @@ function chooseEncounter(action: 'trade' | 'gift' | 'attack') {
     flash = { text: `Raid! +${state.gold - goldBefore} gold, ${lost} crew lost.`, t: 2.5 }
   }
   encounter = null
-  saveGame()
+  if (state.crew > 0 && state.morale > 0) saveGame()
 }
 
 // --- render --------------------------------------------------------------

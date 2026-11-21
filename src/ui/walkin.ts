@@ -3,6 +3,7 @@ import { moodOf } from '../game/encounter'
 import type { Tileset } from '../art/tileset'
 import { tileIndex } from '../art/relief'
 import { TILE } from '../world/tiles'
+import { tileHash } from '../world/rng'
 import { drawExplorerSprite, type SpriteBank } from '../art/spritebank'
 import { font } from './font'
 import {
@@ -58,7 +59,7 @@ export function drawWalkin(
   const grass = tileset.get(TILE.GRASS)!
   for (let ty = 0; ty < scene.h; ty++) {
     for (let tx = 0; tx < scene.w; tx++) {
-      const v = ((tx * 73856093) ^ (ty * 19349663)) >>> 0
+      const v = tileHash(tx, ty)
       // a kept plaza: bare turf with the odd wildflower, not the wild country's
       // rocks. tileIndex keeps the pick on the decor axis of the atlas.
       const frame = tileIndex(TILE.GRASS, v % 9 === 0 ? 1 : 0, 0, 0)

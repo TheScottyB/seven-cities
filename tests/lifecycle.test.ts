@@ -1,5 +1,6 @@
 import {
   makeLifecycle,
+  isIgnoredKey,
   offerGesture,
   routeKey,
   routeClick,
@@ -120,4 +121,16 @@ test('standAside clears every gate a bot would trip on', () => {
   offerGesture(lc, true, unlocks(true))
   expect(takeFirstUnlock(lc)).toBe(false)
   expect(pauseForFocus(lc, 'playing')).toBe(false)
+})
+
+test('isIgnoredKey filters OS/browser shortcuts and bare modifiers but allows Shift+letter and normal keys', () => {
+  expect(isIgnoredKey({ key: 'r', ctrlKey: true })).toBe(true)
+  expect(isIgnoredKey({ key: 'Tab', metaKey: true })).toBe(true)
+  expect(isIgnoredKey({ key: 'Tab', altKey: true })).toBe(true)
+  for (const mod of ['Shift', 'Control', 'Alt', 'Meta']) {
+    expect(isIgnoredKey({ key: mod })).toBe(true)
+  }
+  expect(isIgnoredKey({ key: 'M' })).toBe(false)
+  expect(isIgnoredKey({ key: 'Enter' })).toBe(false)
+  expect(isIgnoredKey({ key: 'Escape' })).toBe(false)
 })

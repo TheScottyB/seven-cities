@@ -7,6 +7,7 @@
  * slope face" while drawing. It asks once, here, and remembers.
  */
 import { TILE } from '../world/tiles'
+import { tileHash } from '../world/rng'
 import type { GameMap } from '../world/mapgen'
 
 /** How far offshore the depth ramp keeps counting before it is all abyss. */
@@ -174,7 +175,7 @@ export function buildDecorMap(map: GameMap): Uint8Array {
     if (count <= 1) continue
     const x = i % w
     const y = (i / w) | 0
-    const hash = ((x * 73856093) ^ (y * 19349663) ^ 0x5bf03635) >>> 0
+    const hash = (tileHash(x, y) ^ 0x5bf03635) >>> 0
     // lush at the shoreline, bare by the time the ground reaches highland
     const lush = Math.max(0, Math.min(1, 1 - (e[i] - 0.34) / 0.34))
     const roll = (hash % 1000) / 1000

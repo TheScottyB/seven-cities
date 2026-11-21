@@ -1,4 +1,12 @@
-import { packBits, unpackBits, serializeSave, deserializeSave, mapFingerprint, SAVE_VERSION } from '../src/game/save'
+import {
+  packBits,
+  unpackBits,
+  serializeSave,
+  deserializeSave,
+  mapFingerprint,
+  validateSaveForWorld,
+  SAVE_VERSION,
+} from '../src/game/save'
 import { makeState } from '../src/game/state'
 import { generateMap } from '../src/world/mapgen'
 import { placeVillages } from '../src/world/villages'
@@ -119,6 +127,16 @@ const mutations: Mutation[] = [
   ['morale "x"', (d) => { d.state.morale = 'x' }],
   ['elapsed null (NaN round-trips as null)', (d) => { d.state.elapsed = null }],
   ['status 99', (d) => { d.state.status = 99 }],
+  ['finished status (Won)', (d) => { d.state.status = 1 }],
+  ['finished status (Lost)', (d) => { d.state.status = 2 }],
+  ['zero crew', (d) => { d.state.crew = 0 }],
+  ['zero morale', (d) => { d.state.morale = 0 }],
+  ['negative food', (d) => { d.state.food = -1 }],
+  ['negative gold', (d) => { d.state.gold = -10 }],
+  ['fear past 100', (d) => { d.state.fear = 101 }],
+  ['day 0', (d) => { d.state.day = 0 }],
+  ['negative banked gold', (d) => { d.career.banked = -100 }],
+  ['negative voyages', (d) => { d.career.voyages = -1 }],
   ['version 6', (d) => { d.version = 6 }],
   ['explorer x null', (d) => { d.explorer.x = null }],
   ['ship y missing', (d) => { delete d.ships[0].y }],
@@ -128,6 +146,7 @@ const mutations: Mutation[] = [
   ['a null village entry', (d) => { d.villages = [null] }],
   ['a village entry that is a number', (d) => { d.villages = [3] }],
   ['an outpost without stock', (d) => { d.outposts = [{ x: 1, y: 1 }] }],
+  ['an outpost with negative stock', (d) => { d.outposts = [{ x: 1, y: 1, stock: -5 }] }],
   ['a null outpost', (d) => { d.outposts = [null] }],
 ]
 
@@ -162,4 +181,53 @@ test('mapFingerprint is deterministic and sees tiles and golden cities', () => {
 
   const flipped = villages.map((v, i) => (i === 5 ? { ...v, golden: !v.golden } : v))
   expect(mapFingerprint(map.tiles, map.width, map.height, flipped)).not.toBe(h)
+})
+
+test('validateSaveForWorld rejects mismatched worlds, fog sizes and off-map positions', () => {
+  const map = generateMap(77)
+  const villages = placeVillages(map, 28)
+  const fog = makeFog(map.width, map.height)
+  const make = () =>
+    deserializeSave(
+      serializeSave({
+        seedStr: '77',
+        mapHash: mapFingerprint(map.tiles, map.width, map.height, villages),
+        phase: 'at-sea',
+        state: makeState(),
+        explorer: { x: 10.5, y: 12.5 },
+        ships: [{ x: 9.5, y: 12.5 }],
+        activeShip: 0,
+        sailing: false,
+        career: { banked: 0, voyages: 0 },
+        outposts: [{ x: 20, y: 20, stock: 50 }],
+        fogSeen: fog.seen,
+        villages,
+      }),
+    )!
+
+  expect(validateSaveForWorld(make(), map, villages, fog.seen.length)).toBeNull()
+
+  const wrongHash = make()
+  wrongHash.mapHash ^= 1
+  expect(validateSaveForWorld(wrongHash, map, villages, fog.seen.length)).toMatch(/different world/)
+
+  const wrongVillages = make()
+  wrongVillages.villages.pop()
+  expect(validateSaveForWorld(wrongVillages, map, villages, fog.seen.length)).toMatch(/different world/)
+
+  const wrongFog = make()
+  wrongFog.fogSeenB64 = packBits(new Uint8Array(16))
+  expect(validateSaveForWorld(wrongFog, map, villages, fog.seen.length)).toMatch(/fog size/)
+
+  const offExplorer = make()
+  offExplorer.explorer.x = map.width
+  expect(validateSaveForWorld(offExplorer, map, villages, fog.seen.length)).toMatch(/off the map/)
+
+  const offShip = make()
+  offShip.ships[0].y = -1
+  expect(validateSaveForWorld(offShip, map, villages, fog.seen.length)).toMatch(/off the map/)
+
+  const offOutpost = make()
+  offOutpost.outposts[0].x = map.width + 5
+  expect(validateSaveForWorld(offOutpost, map, villages, fog.seen.length)).toMatch(/off the map/)
 })
