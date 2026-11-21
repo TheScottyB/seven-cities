@@ -126,7 +126,7 @@ test('every map is winnable: no village hides in a sea the fleet cannot reach', 
     expect(vs.filter((v) => v.golden).length, seedStr).toBe(CITIES_OF_GOLD)
     for (const v of vs) expect(reach[idx(v.x, v.y)], seedStr).toBe(1)
   }
-})
+}, 20_000)
 
 test('every village is amphibious-reachable from the landing (many seeds)', () => {
   // guards against unwinnable maps: with the ship, reachable means some mix

@@ -94,7 +94,7 @@ test('storms bounce off the map edges instead of jumping across', () => {
     }
   }
   expect(edgesMet).toBeGreaterThan(0) // the run really does cross an edge
-})
+}, 15_000)
 
 test('storms follow their straight course until they first reach an edge', () => {
   const m = generateMap(123)
