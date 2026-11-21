@@ -31,7 +31,7 @@ jobs:
           /tmp/pw-smoke/node_modules/.bin/playwright-core install chromium --with-deps
       - name: Run headless Chromium smoke check against dist/
         run: |
-          pnpm preview --port 4173 --strictPort &
+          pnpm preview --host 127.0.0.1 --port 4173 --strictPort &
           SERVER_PID=$!
           trap "kill $SERVER_PID 2>/dev/null || true" EXIT
           sleep 2
