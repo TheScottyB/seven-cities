@@ -64,11 +64,13 @@ via `pnpm-workspace.yaml`.
 | `1` / `2` / `3` / `4` | In a parley: trade / gift / attack / amaze |
 | `F` | Found a mission fort where you stand (on land only; gathers food and eases fear) |
 | `B` | Make camp / bivouac (on land only; trades provisions & half a day to restore morale) |
-| `Esc` | Walk away from a parley or leave a village; on the map, save and return to the title |
+| `Tab` | Open / close the full Cartographer's World Chart (or click the corner minimap) |
+| `H` / `?` | Open / close the in-game controls reference |
+| `Esc` | Close overlay, walk away from a parley or leave a village; on the map, save and return to the title |
 | `M` | Sound on / off (remembered between visits) |
 | `Enter` | Outfit a new expedition (title) · set sail (outfitting) · outfit the next voyage (Spain) · start a new expedition (game over) |
 | `C` | Continue your saved expedition (title screen) |
-| `R` | Roll a new world (title screen) |
+| `R` / `P` | Roll a random world (`R`) or cycle preset seeds `1492` / `1519` / `6767` (`P`) on the title screen (or share a link with `?seed=...`) |
 | `↑ ↓` / `← →` | Choose a line / adjust it (outfitting screen) |
 
 - Menus are clickable too: the title lines, the outfitting rows, their `<` `>` arrows and
@@ -84,10 +86,12 @@ via `pnpm-workspace.yaml`.
 
 ## How it plays
 
-**The New World.** Each seed carves an Americas in miniature: one continent running the
-length of the map, a mountain cordillera down its spine feeding the rivers, and an island
-arc off the west coast between the mainland and the open Atlantic that leads home. The fog
-lifts as you travel and what you chart stays on your map and minimap.
+**The New World & Landmarks.** Each seed carves an Americas in miniature: one continent
+running the length of the map, a mountain cordillera down its spine feeding the rivers, and
+an island arc off the west coast between the mainland and the open Atlantic that leads home.
+The fog lifts as you travel, charting 5–7 named geographic landmarks (peaks, rivers, capes,
+bays, and islands) for Royal Fame bonuses. Press `Tab` (or click the corner minimap) to study
+the full Cartographer's World Chart. Share exact worlds via `?seed=6767` URLs.
 
 **Getting around.** Terrain sets your pace: forest and jungle are slow, mountains are
 impassable. Step onto a river and the expedition takes to canoes, the fastest way inland.
@@ -165,12 +169,12 @@ and WebAudio.
 src/
   world/    seeded world generation: rng, noise, terrain, villages, fog, coast   (pure)
   game/     game rules: state, movement, ships, weather, parley, walk-in,
-            outfitting, career, forts, lore, saves, chronicle                   (pure)
+            outfitting, career, forts, discoveries, seeds, lore, saves, chronicle (pure)
   audio/    director.ts and scene.ts decide cues and ambience (pure); score.ts is
             the music as data; player.ts, music.ts and texture.ts synthesize with WebAudio
   art/      procedural tileset, terrain relief, sprites and paper, baked at boot
   engine/   loop, input, camera, renderer
-  ui/       canvas-drawn HUD, screens, parley panel, walk-in scene, click regions
+  ui/       canvas-drawn HUD, screens, World Chart, parley panel, walk-in scene, click regions
   app/      the shell's seams: storage (localStorage), viewport (canvas sizing),
             lifecycle (pure pause/crash/gesture rules), devhooks (dev-only audio probes)
   main.ts   app shell: screen flow, per-screen update/render, saves, audio wiring,
