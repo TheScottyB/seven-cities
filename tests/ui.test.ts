@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'vitest'
 import { beginHits, hitAt } from '../src/ui/hit'
 import { drawHud } from '../src/ui/hud'
-import { drawStartScreen, drawOutfitScreen, drawSpainScreen, drawEncounter, drawGameOver } from '../src/ui/panels'
+import { drawStartScreen, drawOutfitScreen, drawSpainScreen, drawEncounter, drawGameOver, drawHelpOverlay } from '../src/ui/panels'
+import { drawWorldChart } from '../src/ui/chart'
+import { generateMap } from '../src/world/mapgen'
+import { makeFog, reveal } from '../src/world/fog'
+import { makeExplorer } from '../src/game/explorer'
+import { findLandmarks } from '../src/game/discoveries'
+import { buildRelief } from '../src/art/relief'
 import { makeState, scoreParts } from '../src/game/state'
 import { defaultOutfit } from '../src/game/outfit'
 import { makeCareer } from '../src/game/career'
@@ -169,5 +175,43 @@ describe('panels layout & hit regions', () => {
     expect(px).toBeLessThan(36) // fitFont stepped down for 480px width
     const go = texts.find((t) => t.text.includes('Press ENTER'))!
     expect(hitAt(go.x, go.y - 6)).toBe('over-restart')
+  })
+
+  test('drawWorldChart labels discovered landmarks and registers chart-close hit', () => {
+    const { ctx, texts } = fakeCtx()
+    beginHits()
+    const map = generateMap(123)
+    const fog = makeFog(map.width, map.height)
+    reveal(fog, map.landing.x, map.landing.y, 10)
+    const landmarks = findLandmarks(map)
+    const discovered = new Set([landmarks[0].id])
+    drawWorldChart(
+      ctx,
+      1000,
+      700,
+      map,
+      fog,
+      makeExplorer(map),
+      [],
+      [],
+      [],
+      landmarks,
+      discovered,
+      buildRelief(map),
+      2,
+    )
+    expect(texts.some((t) => t.text === landmarks[0].name)).toBe(true)
+    expect(texts.some((t) => t.text === landmarks[1].name)).toBe(false)
+    const close = texts.find((t) => t.text.includes('close chart'))!
+    expect(hitAt(close.x, close.y - 6)).toBe('chart-close')
+  })
+
+  test('drawHelpOverlay lists controls and registers help-close hit', () => {
+    const { ctx, texts } = fakeCtx()
+    beginHits()
+    drawHelpOverlay(ctx, 1000, 700)
+    expect(texts.some((t) => t.text === 'EXPEDITION CONTROLS')).toBe(true)
+    const close = texts.find((t) => t.text.includes('resume expedition'))!
+    expect(hitAt(close.x, close.y - 6)).toBe('help-close')
   })
 })

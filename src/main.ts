@@ -69,6 +69,7 @@ import {
 } from './game/encounter'
 import { villageName, rumorLine, cityFoundToast } from './game/lore'
 import { findLandmarks, checkDiscoveries, DISCOVERY_BONUS, type Landmark } from './game/discoveries'
+import { DEFAULT_SEED, parseSeedQuery, nextSeedPreset } from './game/seeds'
 import { makeScene, tickScene, type WalkinScene } from './game/walkin'
 import { makeCareer, bankGold, budgetFor, rankIndex, type Career } from './game/career'
 import { direct, ambienceFor, type AudioSnapshot, type GameEvent } from './audio/director'
@@ -90,7 +91,8 @@ import { buildEdges, buildEdgeKeys } from './art/edges'
 import { buildDeckles } from './art/paper'
 import { buildSpriteBank } from './art/spritebank'
 import { drawHud, drawWindIndicator } from './ui/hud'
-import { drawStartScreen, drawOutfitScreen, drawSpainScreen, drawEncounter, drawGameOver, drawResult } from './ui/panels'
+import { drawStartScreen, drawOutfitScreen, drawSpainScreen, drawEncounter, drawGameOver, drawResult, drawHelpOverlay } from './ui/panels'
+import { drawWorldChart, invalidateChart } from './ui/chart'
 import { font } from './ui/font'
 import { seedFromString } from './world/rng'
 import { TILE } from './world/tiles'
@@ -178,6 +180,7 @@ const spriteBank = buildSpriteBank()
 /** Everything the renderer needs precomputed for a freshly generated world. */
 function buildWorldArt(map: ReturnType<typeof generateMap>): WorldArt {
   invalidateMinimap()
+  invalidateChart()
   return {
     relief: buildRelief(map),
     edges: edgeSet,
@@ -187,12 +190,14 @@ function buildWorldArt(map: ReturnType<typeof generateMap>): WorldArt {
   }
 }
 let screen: Screen = 'start'
-let world: World = newWorld('1492')
+let world: World = newWorld(parseSeedQuery(location.search) ?? DEFAULT_SEED)
 worldReady = true
 centerWorldCam(world)
 let outfit: Outfit = defaultOutfit()
 let outfitRow = 0
 let encounter: Village | null = null
+let chartOpen = false
+let helpOpen = false
 let flash = { text: '', t: 0 }
 let autosaveIn = AUTOSAVE_EVERY
 let timeScale = 1 // dev hook can raise this for fast playtests
@@ -422,6 +427,8 @@ function applyOutfit() {
   world.state.crew = outfit.crew
   world.state.gold = remainingBudget(outfit, budgetFor(career.banked))
   encounter = null
+  chartOpen = false
+  helpOpen = false
   walkin = null
   flash = { text: '', t: 0 } // no toast carried over from a previous run
   saveGame('at-sea')
@@ -539,6 +546,7 @@ function restoreWorld(save: SaveData): { world: World; career: Career } {
   w.fog.revealedCount = w.fog.seen.reduce((a, b) => a + b, 0)
   w.discovered = new Set(save.discovered.filter((id) => id >= 0 && id < w.landmarks.length))
   invalidateMinimap() // the restored fog reveals far more than the fresh world did
+  invalidateChart()
   // placement (x, y, golden) regenerates from the seed and is covered by
   // mapHash; only the fields play changes are restored
   save.villages.forEach((sv, i) => {
@@ -575,6 +583,8 @@ function continueExpedition() {
   prevSnap = null // ambience bed only: no cues for what the restored world "changed"
   flash = { text: '', t: 0 }
   encounter = null
+  chartOpen = false
+  helpOpen = false
   walkin = null
   if (save.phase === 'refit') {
     // saved on the way to Spain; the court screen's figures aren't persisted
@@ -666,6 +676,11 @@ function updateStart(click: string | null, firstUnlock: boolean) {
     // roll a new world to explore
     world = newWorld(String(1 + (Math.floor(performance.now() * 7) % 99999)))
     resumable = false
+  } else if (input.pressed('p') || click === 'start-preset') {
+    const preset = nextSeedPreset(world.seedStr)
+    world = newWorld(preset.seed)
+    resumable = false
+    flash = { text: `World preset: ${preset.label}`, t: 2 }
   } else if (click === 'start-keyboard') {
     life.touchOnly = false
   }
@@ -744,6 +759,14 @@ function updatePlaying(dt: number, click: string | null) {
     else if (input.pressed('3') || click === 'enc-3') chooseEncounter('attack')
     else if (input.pressed('4') || click === 'enc-4') chooseEncounter('amaze')
     else if (input.pressed('esc') || click === 'enc-esc') encounter = null
+  } else if (chartOpen) {
+    if (input.pressed('tab') || input.pressed('esc') || click === 'chart-close') chartOpen = false
+  } else if (helpOpen) {
+    if (input.pressed('h') || input.pressed('?') || input.pressed('esc') || click === 'help-close') helpOpen = false
+  } else if (input.pressed('tab') || click === 'open-chart') {
+    chartOpen = true
+  } else if (input.pressed('h') || input.pressed('?')) {
+    helpOpen = true
   } else {
     const { dx, dy } = input.axis()
     if (world.sailing) {
@@ -1073,11 +1096,14 @@ function renderPlaying(alpha: number) {
       ctx.fillRect(0, 0, cssW, cssH)
     }
   }
-  if (!encounter && screen === 'playing') drawActionPrompt()
+  const modalOpen = !!encounter || chartOpen || helpOpen
+  if (!modalOpen && screen === 'playing') drawActionPrompt()
 
   // quiet key reference in the corner
-  if (screen === 'playing' && !encounter) {
-    const hint = world.sailing ? 'E interact · M sound · Esc menu' : 'E interact · F fort · B camp · M sound · Esc menu'
+  if (screen === 'playing' && !modalOpen) {
+    const hint = world.sailing
+      ? 'E act · Tab chart · H help · M sound · Esc menu'
+      : 'E act · F fort · B camp · Tab chart · H help · M sound · Esc menu'
     ctx.font = font(12)
     ctx.textAlign = 'left'
     ctx.textBaseline = 'alphabetic'
@@ -1088,10 +1114,27 @@ function renderPlaying(alpha: number) {
     ctx.fillText(hint, 12, cssH - 12)
   }
 
-  // the banner yields while a decision panel is up — no overlapping chrome
-  if (flash.t > 0 && screen === 'playing' && !encounter) drawResult(ctx, cssW, flash.text, hudH + 10)
+  // the banner yields while a decision panel or overlay is up — no overlapping chrome
+  if (flash.t > 0 && screen === 'playing' && !modalOpen) drawResult(ctx, cssW, flash.text, hudH + 10)
   if (encounter)
     drawEncounter(ctx, cssW, cssH, encounter, world.state.goods, world.state.fear, uiClock(), villageName(encounter, world.villages))
+  else if (chartOpen && screen === 'playing')
+    drawWorldChart(
+      ctx,
+      cssW,
+      cssH,
+      world.map,
+      world.fog,
+      explorer,
+      world.villages,
+      world.ships,
+      world.outposts,
+      world.landmarks,
+      world.discovered,
+      world.art.relief,
+      world.state.citiesFound,
+    )
+  else if (helpOpen && screen === 'playing') drawHelpOverlay(ctx, cssW, cssH)
 }
 
 /** The plate naming what E would do; actOn() does it. */
@@ -1220,6 +1263,8 @@ if (import.meta.env.DEV) {
       world = newWorld(s)
       resetSession()
       encounter = null
+      chartOpen = false
+      helpOpen = false
       walkin = null
       flash = { text: '', t: 0 }
       titleInfo = null

@@ -100,7 +100,7 @@ export class Input implements Disposable {
   }
 }
 
-const HANDLED = new Set(['left', 'right', 'up', 'down', 'action', '1', '2', '3', '4', 'esc'])
+const HANDLED = new Set(['left', 'right', 'up', 'down', 'action', '1', '2', '3', '4', 'tab', 'esc'])
 
 const PHYSICAL_MOVE: Record<string, string> = {
   KeyW: 'up',
@@ -110,7 +110,7 @@ const PHYSICAL_MOVE: Record<string, string> = {
 }
 
 // Letters whose on-screen labels name the character, not the key position.
-const MNEMONIC = new Set(['f', 'b', 'm', 'c', 'r', 'e'])
+const MNEMONIC = new Set(['f', 'b', 'h', 'p', 'm', 'c', 'r', 'e'])
 
 /**
  * Map a key event to a logical key. Keydown and keyup must go through here
@@ -146,6 +146,8 @@ function logical(k: string): string {
       return 'action'
     case 'Escape':
       return 'esc'
+    case 'Tab':
+      return 'tab'
     case 'Enter':
       return 'enter'
     default:

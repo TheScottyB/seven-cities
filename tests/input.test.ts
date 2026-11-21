@@ -232,3 +232,16 @@ test('explicit resource management (using / Symbol.dispose) detaches listeners',
   target.dispatchEvent(Object.assign(new Event('keydown'), { key: 'ArrowLeft' }))
   expect(leaked.axis()).toEqual({ dx: 0, dy: 0 })
 })
+
+test('Tab maps to tab with default prevented, and H / ? register for help', () => {
+  const { target, input, down } = setup()
+  const tabEv = Object.assign(new Event('keydown', { cancelable: true }), { key: 'Tab', code: 'Tab' })
+  target.dispatchEvent(tabEv)
+  expect(tabEv.defaultPrevented).toBe(true)
+  expect(input.pressed('tab')).toBe(true)
+
+  down({ key: 'h', code: 'KeyH' })
+  expect(input.pressed('h')).toBe(true)
+  down({ key: '?', code: 'Slash' })
+  expect(input.pressed('?')).toBe(true)
+})
