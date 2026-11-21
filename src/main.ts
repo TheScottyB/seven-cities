@@ -120,6 +120,14 @@ const AUTOSAVE_EVERY = 5 // seconds
 
 const canvas = document.getElementById('game') as HTMLCanvasElement
 const ctx = canvas.getContext('2d')!
+const announcer = document.getElementById('announcer')
+let lastAnnounced = ''
+/** Mirror important canvas notices into the visually hidden aria-live region. */
+function announce(text: string) {
+  if (!announcer || !text || text === lastAnnounced) return
+  lastAnnounced = text
+  announcer.textContent = text
+}
 const input = new Input()
 
 /**
@@ -622,7 +630,10 @@ function update(dt: number) {
     flash = { text: muted ? 'Sound muted (M to unmute)' : 'Sound on', t: 1.5 }
   }
   // the one place a toast ages, whatever screen shows it
-  if (flash.t > 0) flash.t -= dt * timeScale
+  if (flash.t > 0) {
+    flash.t -= dt * timeScale
+    announce(flash.text)
+  }
 
   if (screen === 'walkin' && walkin && walkinVillage) updateWalkin(dt, walkin, walkinVillage)
   else if (screen === 'start') updateStart(click, firstUnlock)
@@ -808,6 +819,11 @@ function updatePlaying(dt: number, click: string | null) {
       recordExpedition()
       resumable = false
       screen = 'over'
+      announce(
+        state.status === GameStatus.Won
+          ? `Victory! All 7 Cities of Gold-Tone Metal found. Final score ${finalScore()}.`
+          : `Expedition lost. Final score ${finalScore()}.`,
+      )
     }
 
     if (screen === 'playing' && !world.sailing && input.pressed('f')) {

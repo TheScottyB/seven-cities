@@ -129,3 +129,30 @@ test('walk-in hostility is the shared hostile mood', () => {
     }
   }
 })
+
+test('crowding a wary villager triggers an emote puff, spooks them, and decays over time', () => {
+  const s = makeScene(village({ temperament: 0.5 }), 0)
+  const moodBefore = s.mood
+  const vg = s.villagers[0]
+  vg.x = s.px + 0.3
+  vg.y = s.py
+  tickScene(s, 0, 0, 1 / 60)
+  expect(vg.emote.length).toBeGreaterThan(0)
+  expect(vg.emoteT).toBeGreaterThan(0)
+  expect(s.spooked).toBe(1)
+  expect(s.mood).toBeLessThan(moodBefore)
+
+  // advance time past the emote duration: the puff clears
+  for (let i = 0; i < 120; i++) tickScene(s, 0, 0, 1 / 60)
+  expect(vg.emote).toBe('')
+  expect(vg.emoteT).toBe(0)
+})
+
+test('hostile villagers puff hostile emotes as they close in', () => {
+  const s = makeScene(village({ temperament: 0.05 }), 0)
+  const vg = s.villagers[0]
+  vg.x = s.px + 1.2
+  vg.y = s.py
+  tickScene(s, 0, 0, 1 / 60)
+  expect(vg.emote.length).toBeGreaterThan(0)
+})

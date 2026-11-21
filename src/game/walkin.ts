@@ -17,6 +17,10 @@ export interface Villager {
   wx: number
   wy: number
   appeased: boolean
+  /** brief overhead reaction tag (empty when silent) */
+  emote: string
+  /** seconds remaining on the current emote */
+  emoteT: number
 }
 
 /** Decorative village furniture — never blocks movement. */
@@ -46,9 +50,17 @@ export interface WalkinScene {
   golden: boolean
   props: WalkinProp[]
   caught: number
+  /** how many wary villagers were bumped during this walk-in */
+  spooked: number
   t: number
   rng: Rng
 }
+
+const EMOTES = {
+  friendly: ['Shiny!', '6-7!', 'Ooh!', 'Gold-tone?'],
+  wary: ['Ni!', 'A shrubbery?', 'Watch it!', 'Silly walk...'],
+  hostile: ['Run away!', 'Pointy stick!', 'Begone!'],
+} as const
 
 export type WalkinStatus = 'walking' | 'chief' | 'left' | 'driven-off'
 
@@ -82,6 +94,8 @@ export function makeScene(v: Village, fear: number): WalkinScene {
       wx: 0,
       wy: 0,
       appeased: false,
+      emote: '',
+      emoteT: 0,
     })
   }
 
@@ -117,6 +131,7 @@ export function makeScene(v: Village, fear: number): WalkinScene {
     golden: v.golden,
     props,
     caught: 0,
+    spooked: 0,
     t: 0,
     rng,
   }
@@ -152,9 +167,18 @@ export function tickScene(s: WalkinScene, dx: number, dy: number, dt: number): W
   if (Math.hypot(s.px - s.chief.x, s.py - s.chief.y) < 0.9) return 'chief'
 
   for (const vg of s.villagers) {
+    if (vg.emoteT > 0) {
+      vg.emoteT = Math.max(0, vg.emoteT - dt)
+      if (vg.emoteT === 0) vg.emote = ''
+    }
     if (vg.appeased) continue
     const d = Math.hypot(vg.x - s.px, vg.y - s.py)
     if (s.hostile) {
+      if (d < 2.2 && vg.emoteT <= 0) {
+        const pool = EMOTES.hostile
+        vg.emote = pool[Math.floor(s.rng() * pool.length)]
+        vg.emoteT = 1.4
+      }
       if (d > 0.01) {
         vg.x += ((s.px - vg.x) / d) * CHASE_SPEED * dt
         vg.y += ((s.py - vg.y) / d) * CHASE_SPEED * dt
@@ -165,6 +189,17 @@ export function tickScene(s: WalkinScene, dx: number, dy: number, dt: number): W
         if (s.caught >= 3) return 'driven-off'
       }
     } else {
+      if (d < 0.75 && vg.emoteT <= 0) {
+        const friendly = moodOf(s.mood) === 'friendly'
+        const pool = friendly ? EMOTES.friendly : EMOTES.wary
+        vg.emote = pool[Math.floor(s.rng() * pool.length)]
+        vg.emoteT = 1.5
+        if (!friendly) {
+          // 1984 walk-in: crowding wary villagers spooks them slightly
+          s.spooked++
+          s.mood = Math.max(0, s.mood - 0.02)
+        }
+      }
       if (d < 2.2) {
         // shy of the armored stranger — give ground
         vg.x += ((vg.x - s.px) / (d || 1)) * 1.6 * dt
