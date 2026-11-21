@@ -68,6 +68,7 @@ import {
   type EncounterAction,
 } from './game/encounter'
 import { villageName, rumorLine, cityFoundToast } from './game/lore'
+import { findLandmarks, checkDiscoveries, DISCOVERY_BONUS, type Landmark } from './game/discoveries'
 import { makeScene, tickScene, type WalkinScene } from './game/walkin'
 import { makeCareer, bankGold, budgetFor, rankIndex, type Career } from './game/career'
 import { direct, ambienceFor, type AudioSnapshot, type GameEvent } from './audio/director'
@@ -161,6 +162,8 @@ interface World {
   sailing: boolean
   outposts: Outpost[]
   weather: Weather
+  landmarks: Landmark[]
+  discovered: Set<number>
   cam: Camera
   /** renderer precomputation; non-enumerable so World serializes as game state only */
   readonly art: WorldArt
@@ -377,6 +380,7 @@ function newWorld(seedStr: string): World {
     seedStr, map, villages, fog, state: makeState(), explorer,
     ships: findMoorings(map, 1), activeShip: 0, sailing: false,
     outposts: [], weather: makeWeather(seed, map),
+    landmarks: findLandmarks(map), discovered: new Set<number>(),
     cam: { x: explorer.x, y: explorer.y },
   }
   // non-enumerable: __dbg.world() and any serializer see only game state
@@ -472,6 +476,7 @@ function saveGame(phase: SavePhase = 'at-sea'): boolean {
     outposts: world.outposts,
     fogSeen: world.fog.seen,
     villages: world.villages,
+    discovered: [...world.discovered],
   })
   if (written) {
     storageOk = true
@@ -491,7 +496,7 @@ if (unreadableSave()) flash = { text: 'Your saved expedition could not be read.'
 
 /** The expedition's final tally: score() is the sum of scoreParts, plus the gold banked in Spain. */
 function finalScore(): number {
-  return score(world.state, world.fog.revealedCount) + career.banked
+  return score(world.state, world.fog.revealedCount, world.discovered.size) + career.banked
 }
 
 function recordExpedition() {
@@ -532,6 +537,7 @@ function restoreWorld(save: SaveData): { world: World; career: Career } {
   w.outposts = save.outposts.map((o) => ({ ...o }))
   w.fog.seen = unpackBits(save.fogSeenB64, w.fog.seen.length)
   w.fog.revealedCount = w.fog.seen.reduce((a, b) => a + b, 0)
+  w.discovered = new Set(save.discovered.filter((id) => id >= 0 && id < w.landmarks.length))
   invalidateMinimap() // the restored fog reveals far more than the fresh world did
   // placement (x, y, golden) regenerates from the seed and is covered by
   // mapHash; only the fields play changes are restored
@@ -763,6 +769,11 @@ function updatePlaying(dt: number, click: string | null) {
     }
     const foodBefore = state.food
     reveal(fog, Math.floor(explorer.x), Math.floor(explorer.y), REVEAL_RADIUS)
+    const newLandmarks = checkDiscoveries(world.landmarks, world.discovered, explorer.x, explorer.y)
+    if (newLandmarks.length > 0) {
+      audioEvents.push('discover')
+      flash = { text: `Charted ${newLandmarks[0].name}! (+${DISCOVERY_BONUS} fame)`, t: 3.4 }
+    }
     tick(state, sdt)
     tickOutposts(world.outposts, sdt)
     if (foodBefore >= LOW_FOOD && state.food < LOW_FOOD) {
@@ -793,6 +804,7 @@ function updatePlaying(dt: number, click: string | null) {
     if (screen === 'playing' && !world.sailing && input.pressed('b')) {
       // classic 1984 expedition camp: trade provisions & half a day for morale
       if (makeCamp(state)) {
+        audioEvents.push('camp')
         flash = { text: 'Camp pitched. Morale rises over questionable stew and coconut-shell percussion.', t: 3 }
         saveGame()
       } else if (state.food < CAMP_FOOD) {
@@ -993,7 +1005,17 @@ function renderOutfit() {
 }
 
 function renderSpain() {
-  drawSpainScreen(ctx, view.cssW, view.cssH, career, world.state, justBanked, promoted, uiClock())
+  drawSpainScreen(
+    ctx,
+    view.cssW,
+    view.cssH,
+    career,
+    world.state,
+    justBanked,
+    promoted,
+    uiClock(),
+    { found: world.discovered.size, total: world.landmarks.length },
+  )
   if (flash.t > 0) drawResult(ctx, view.cssW, flash.text, 28)
 }
 
@@ -1124,7 +1146,7 @@ function renderOver() {
     {
       cities: world.state.citiesFound,
       day: world.state.day,
-      parts: scoreParts(world.state, world.fog.revealedCount),
+      parts: scoreParts(world.state, world.fog.revealedCount, world.discovered.size),
     },
     uiClock(),
   )

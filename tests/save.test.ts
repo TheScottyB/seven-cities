@@ -78,10 +78,11 @@ test('garbage and wrong versions are rejected', () => {
 const FROZEN_V7 =
   '{"version":7,"seedStr":"1492","mapHash":2166136261,"phase":"at-sea","state":{"food":212.5,"crew":24,"gold":130,"goods":60,"morale":88,"fear":10,"day":4,"elapsed":71.25,"citiesFound":1,"villagesContacted":2,"status":0},"explorer":{"x":50.5,"y":60.25},"ships":[{"x":48.5,"y":61.5},{"x":47.5,"y":61.5}],"activeShip":1,"sailing":false,"career":{"banked":600,"voyages":1},"outposts":[{"x":90,"y":90,"stock":120}],"fogSeenB64":"BwYC","villages":[{"x":12,"y":34,"wealth":640,"temperament":0.75,"population":180,"golden":true,"visited":true,"depleted":false},{"x":40,"y":8,"wealth":90,"temperament":0.2,"population":60,"golden":false,"visited":true,"depleted":true}]}'
 
-test('the frozen v7 save deserializes', () => {
+test('the frozen v7 save upgrades cleanly to v8', () => {
   const back = deserializeSave(FROZEN_V7)
   expect(back).not.toBeNull()
   expect(back!.version).toBe(SAVE_VERSION)
+  expect(back!.discovered).toEqual([])
   expect(back!.phase).toBe('at-sea')
   expect(back!.mapHash).toBe(2166136261)
   expect(back!.state.crew).toBe(24)
@@ -90,6 +91,17 @@ test('the frozen v7 save deserializes', () => {
   expect(Array.from(unpackBits(back!.fogSeenB64, 20))).toEqual(
     [1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0],
   )
+})
+
+// The frozen v8 baseline (1.1): must keep deserializing forever.
+const FROZEN_V8 =
+  '{"version":8,"seedStr":"1492","mapHash":2166136261,"phase":"at-sea","state":{"food":212.5,"crew":24,"gold":130,"goods":60,"morale":88,"fear":10,"day":4,"elapsed":71.25,"citiesFound":1,"villagesContacted":2,"status":0},"explorer":{"x":50.5,"y":60.25},"ships":[{"x":48.5,"y":61.5},{"x":47.5,"y":61.5}],"activeShip":1,"sailing":false,"career":{"banked":600,"voyages":1},"outposts":[{"x":90,"y":90,"stock":120}],"fogSeenB64":"BwYC","villages":[{"x":12,"y":34,"wealth":640,"temperament":0.75,"population":180,"golden":true,"visited":true,"depleted":false},{"x":40,"y":8,"wealth":90,"temperament":0.2,"population":60,"golden":false,"visited":true,"depleted":true}],"discovered":[0,2]}'
+
+test('the frozen v8 save deserializes with discovered landmarks intact', () => {
+  const back = deserializeSave(FROZEN_V8)
+  expect(back).not.toBeNull()
+  expect(back!.version).toBe(SAVE_VERSION)
+  expect(back!.discovered).toEqual([0, 2])
 })
 
 function validSave(): Record<string, unknown> {
@@ -148,6 +160,9 @@ const mutations: Mutation[] = [
   ['an outpost without stock', (d) => { d.outposts = [{ x: 1, y: 1 }] }],
   ['an outpost with negative stock', (d) => { d.outposts = [{ x: 1, y: 1, stock: -5 }] }],
   ['a null outpost', (d) => { d.outposts = [null] }],
+  ['v8 discovered not an array', (d) => { d.discovered = 'bad' }],
+  ['v8 discovered with negative id', (d) => { d.discovered = [-1] }],
+  ['v8 discovered with non-integer', (d) => { d.discovered = [1.5] }],
 ]
 
 test('rejects banked gold past the float range, which JSON.parse turns into Infinity', () => {

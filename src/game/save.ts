@@ -10,11 +10,10 @@ import type { Village } from '../world/villages'
  * state (resources, position, fog, village status) is serialized. Fog is
  * bit-packed then base64'd (~6 KB for a 192x192 map).
  *
- * v7 is the 1.0 baseline. Any format change must bump SAVE_VERSION and add an
- * upgrade step in deserializeSave; never silently drop players' saves.
- * Pre-1.0 versions (<7) are rejected: none were ever public.
+ * v7 was the 1.0 baseline. v8 (1.1) adds `discovered` landmark ids and
+ * transparently upgrades v7 saves on read; pre-1.0 versions (<7) are rejected.
  */
-export const SAVE_VERSION = 7
+export const SAVE_VERSION = 8
 
 /** 'refit' marks a save taken on the Spain transition: resume on the outfit screen. */
 export type SavePhase = 'at-sea' | 'refit'
@@ -34,6 +33,8 @@ export interface SaveData {
   outposts: Outpost[]
   fogSeenB64: string
   villages: Village[]
+  /** IDs of charted geographic landmarks (added in v8; v7 upgrades to []). */
+  discovered: number[]
 }
 
 export function packBits(bits: Uint8Array): string {
@@ -96,6 +97,7 @@ export function serializeSave(data: {
   outposts: Outpost[]
   fogSeen: Uint8Array
   villages: Village[]
+  discovered?: number[]
 }): string {
   const save: SaveData = {
     version: SAVE_VERSION,
@@ -111,6 +113,7 @@ export function serializeSave(data: {
     outposts: data.outposts,
     fogSeenB64: packBits(data.fogSeen),
     villages: data.villages,
+    discovered: data.discovered ?? [],
   }
   return JSON.stringify(save)
 }
@@ -141,7 +144,7 @@ const isBase64 = (b64: string) => {
 export function deserializeSave(json: string): SaveData | null {
   try {
     const d = JSON.parse(json)
-    if (!d || typeof d !== 'object' || d.version !== SAVE_VERSION) return null
+    if (!d || typeof d !== 'object' || (d.version !== 7 && d.version !== SAVE_VERSION)) return null
     if (typeof d.seedStr !== 'string' || typeof d.fogSeenB64 !== 'string' || !isBase64(d.fogSeenB64)) return null
     if (!Number.isFinite(d.mapHash) || (d.phase !== 'at-sea' && d.phase !== 'refit')) return null
     if (!d.state || typeof d.state !== 'object') return null
@@ -177,7 +180,20 @@ export function deserializeSave(json: string): SaveData | null {
       return null
     }
     if (!Array.isArray(d.villages) || !d.villages.every(isVillageEntry)) return null
-    return d as SaveData
+    // v7 -> v8 upgrade: v7 saves had no discovered-landmark list
+    let discovered: number[]
+    if (d.version === 7) {
+      discovered = []
+    } else {
+      if (
+        !Array.isArray(d.discovered) ||
+        !d.discovered.every((id: unknown) => Number.isInteger(id) && (id as number) >= 0)
+      ) {
+        return null
+      }
+      discovered = d.discovered as number[]
+    }
+    return { ...(d as SaveData), version: SAVE_VERSION, discovered }
   } catch {
     return null
   }
