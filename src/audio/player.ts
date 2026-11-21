@@ -96,6 +96,16 @@ export function synthesize(ctx: BaseAudioContext, dest: AudioNode, id: CueId, at
       tone(ctx, dest, 'sawtooth', 554, at + 0.1, 0.12, 0.24)
       tone(ctx, dest, 'sawtooth', 659, at + 0.2, 0.28, 0.28)
       break
+    case 'discover': // shimmering landmark bell triad
+      tone(ctx, dest, 'sine', 587, at, 0.35, 0.28)
+      tone(ctx, dest, 'sine', 740, at + 0.08, 0.4, 0.26)
+      tone(ctx, dest, 'sine', 880, at + 0.16, 0.55, 0.3)
+      break
+    case 'camp': // warm hearth crackle + low rest chord
+      noiseBurst(ctx, dest, at, 0.35, 0.22, 1600, 1.4)
+      tone(ctx, dest, 'triangle', 220, at + 0.04, 0.45, 0.22)
+      tone(ctx, dest, 'triangle', 330, at + 0.1, 0.45, 0.18)
+      break
     case 'city-found': // rising fanfare
       tone(ctx, dest, 'square', 392, at, 0.15, 0.25)
       tone(ctx, dest, 'square', 523, at + 0.14, 0.15, 0.25)

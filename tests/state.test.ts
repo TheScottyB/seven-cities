@@ -92,9 +92,10 @@ test('a finished expedition is frozen', () => {
 
 test('score is the sum of its whole-number parts', () => {
   const s = makeState({ gold: 123.7, villagesContacted: 4, day: 9 })
-  const p = scoreParts(s, 57)
+  const p = scoreParts(s, 57, 3)
   for (const v of Object.values(p)) expect(Number.isInteger(v)).toBe(true)
-  expect(p.gold + p.charted + p.villages + p.days).toBe(score(s, 57))
+  expect(p.landmarks).toBe(150)
+  expect(p.gold + p.charted + p.villages + p.landmarks + p.days).toBe(score(s, 57, 3))
   expect(p.days).toBeLessThan(0)
 })
 

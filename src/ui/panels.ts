@@ -373,6 +373,7 @@ export function drawSpainScreen(
   justBanked: number,
   promoted: boolean,
   t = 0,
+  landmarks?: { found: number; total: number },
 ): void {
   ctx.fillStyle = '#0a0a12'
   ctx.fillRect(0, 0, viewW, viewH)
@@ -412,10 +413,11 @@ export function drawSpainScreen(
   }
   const idx = rankIndex(career.banked)
   const next = idx < RANKS.length - 1 ? RANKS[idx + 1] : null
+  const lmPart = landmarks && landmarks.total > 0 ? ` · Landmarks: ${landmarks.found}/${landmarks.total}` : ''
   const lines = [
     courtRemark(career, justBanked, promoted),
-    `Treasury: ${career.banked} gold-tone banked · Cities: ${state.citiesFound}/${CITIES_OF_GOLD} · Peoples met: ${state.villagesContacted}`,
-    `Word of your deeds — fear among the peoples: ${Math.floor(state.fear)}`,
+    `Treasury: ${career.banked} gold-tone · Cities: ${state.citiesFound}/${CITIES_OF_GOLD}${lmPart}`,
+    `Peoples met: ${state.villagesContacted} · Fear among the peoples: ${Math.floor(state.fear)}`,
   ]
   let y = midY - 52
   lines.forEach((l, i) => {
@@ -732,6 +734,7 @@ export function drawGameOver(
     `${p.gold} gold`,
     `+${p.charted} lands charted`,
     `+${p.villages} peoples met`,
+    ...(p.landmarks > 0 ? [`+${p.landmarks} landmarks`] : []),
     `−${Math.abs(p.days)} for ${summary.day} ${summary.day === 1 ? 'day' : 'days'} at large`,
   ]
   if (career.banked > 0) terms.push(`+${career.banked} banked`)

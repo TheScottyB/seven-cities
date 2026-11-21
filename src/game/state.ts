@@ -1,4 +1,5 @@
 import { CITIES_OF_GOLD } from '../world/villages'
+import { DISCOVERY_BONUS } from './discoveries'
 
 // Plain object rather than an enum (erasableSyntaxOnly); the numeric values are persisted in saves.
 export const GameStatus = { Playing: 0, Won: 1, Lost: 2 } as const
@@ -95,20 +96,22 @@ export interface ScoreParts {
   gold: number
   charted: number
   villages: number
+  landmarks: number
   days: number
 }
 
 /** The score broken into whole-number parts; score() is their sum. */
-export function scoreParts(s: GameState, tilesCharted: number): ScoreParts {
+export function scoreParts(s: GameState, tilesCharted: number, landmarksFound = 0): ScoreParts {
   return {
     gold: Math.floor(s.gold),
     charted: Math.floor(tilesCharted * 0.5),
     villages: s.villagesContacted * 20,
+    landmarks: Math.max(0, Math.floor(landmarksFound)) * DISCOVERY_BONUS,
     days: -s.day * 5,
   }
 }
 
-export function score(s: GameState, tilesCharted: number): number {
-  const p = scoreParts(s, tilesCharted)
-  return p.gold + p.charted + p.villages + p.days
+export function score(s: GameState, tilesCharted: number, landmarksFound = 0): number {
+  const p = scoreParts(s, tilesCharted, landmarksFound)
+  return p.gold + p.charted + p.villages + p.landmarks + p.days
 }
