@@ -116,8 +116,25 @@ export function drawWalkin(
     if (vg.appeased) return
     // hostile crowds press forward with urgency in their step
     const bob = (scene.hostile ? Math.sin(t * 10 + i * 1.7) * 0.05 : Math.sin(t * 2.6 + i * 1.3) * 0.02) * SCENE_PX
-    drawShadow(ctx, sx(vg.x), sy(vg.y + 0.18), SCENE_PX * 0.2)
-    drawVillager(ctx, sx(vg.x), sy(vg.y) + bob, SCENE_PX, i)
+    const vx = sx(vg.x)
+    const vy = sy(vg.y) + bob
+    drawShadow(ctx, vx, sy(vg.y + 0.18), SCENE_PX * 0.2)
+    drawVillager(ctx, vx, vy, SCENE_PX, i)
+    if (vg.emote && vg.emoteT > 0) {
+      ctx.font = font(11)
+      const ew = ctx.measureText(vg.emote).width + 10
+      const ex = Math.max(ox + 4 + ew / 2, Math.min(ox + sw - 4 - ew / 2, vx))
+      const ey = Math.max(oy + 14, vy - SCENE_PX * 0.55)
+      ctx.fillStyle = 'rgba(10,12,22,0.88)'
+      ctx.fillRect(ex - ew / 2, ey - 9, ew, 16)
+      ctx.strokeStyle = scene.hostile ? 'rgba(192,80,77,0.85)' : 'rgba(244,196,48,0.65)'
+      ctx.lineWidth = 1
+      ctx.strokeRect(ex - ew / 2 + 0.5, ey - 8.5, ew - 1, 15)
+      ctx.fillStyle = scene.hostile ? '#f0908c' : '#f4e0a0'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(vg.emote, ex, ey - 1)
+    }
   })
 
   // the conquistador at the largest size he is ever drawn — integer-scaled,
