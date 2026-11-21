@@ -6,6 +6,7 @@ import { bestScore, type ChronicleEntry } from '../game/chronicle'
 import { rankTitle, rankIndex, budgetFor, RANKS, type Career } from '../game/career'
 import { dailyAppetite, type GameState, type ScoreParts } from '../game/state'
 import { courtRemark } from '../game/lore'
+import { presetLabel } from '../game/seeds'
 import { addHit, hovered } from './hit'
 import { font, fitFont } from './font'
 import { GAME_TITLE } from './title'
@@ -287,10 +288,16 @@ export function drawStartScreen(
     'Sail off the western edge to bank your shiny alloy in Spain.',
     '',
     'MOVE  W A S D / arrows      INTERACT  E / Space      PARLEY  1 2 3 4',
-    'FORT  F      CAMP  B      SOUND  M      MENU  Esc',
+    'FORT  F      CAMP  B      CHART  Tab      HELP  H      SOUND  M      MENU  Esc',
     '',
   ].map((text) => ({ text, color: dim }))
-  lines.push({ text: `Seed: ${seed}   (R rolls a new world)`, color: dim, hit: 'start-reroll' })
+  const tag = presetLabel(seed)
+  lines.push({
+    text: `Seed: ${tag ?? seed}   (R roll · P preset · ?seed=...)`,
+    color: dim,
+    hit: 'start-reroll',
+  })
+  lines.push({ text: 'Cycle preset seed (1492 / 1519 / 6767)', color: '#7a8a9a', hit: 'start-preset' })
   lines.push({ text: '', color: dim })
   if (opts.needKeyboard) {
     // no start regions at all: a tap must not begin a run it cannot play
@@ -619,6 +626,41 @@ export function drawEncounter(
   const esc = 'Esc — walk away'
   center(ctx, esc, cx, y + H - 22, font(14), hovered('enc-esc') ? '#c9c9d2' : '#7a7a86')
   centerHit(ctx, 'enc-esc', esc, cx, y + H - 22, font(14))
+}
+
+/** In-game controls & survival reference overlay (`H` or `?`). */
+export function drawHelpOverlay(ctx: CanvasRenderingContext2D, viewW: number, viewH: number): void {
+  const w = Math.min(560, viewW - 24)
+  const H = 356
+  const { x, y } = panel(ctx, viewW, viewH, w, H, '#f4c430')
+  const cx = viewW / 2
+  center(ctx, 'EXPEDITION CONTROLS', cx, y + 36, fitFont(ctx, 'EXPEDITION CONTROLS', 22, w - 32), '#f4c430')
+
+  const rows: readonly [string, string][] = [
+    ['W A S D / Arrows', 'March on land, canoe on rivers, or sail at sea'],
+    ['E / Space', 'Enter village, resupply fort, board ship, landfall, or sail to Spain'],
+    ['1 / 2 / 3 / 4', 'Parley: Trade · Gift (compass rumors) · Attack · Amaze'],
+    ['F', 'Found a mission fort on land (250 gold, 5+ crew; gathers food & calms fear)'],
+    ['B', 'Pitch camp on land (18 food + ½ day → +15 morale)'],
+    ['Tab / Minimap', "Open the full Cartographer's World Chart"],
+    ['H / ?', 'Toggle this controls card'],
+    ['M', 'Mute / unmute procedural WebAudio'],
+    ['Esc', 'Close overlay, leave village, or save & return to title'],
+  ]
+  let ry = y + 70
+  for (const [keys, desc] of rows) {
+    ctx.font = font(13, true)
+    ctx.fillStyle = '#e0d18a'
+    ctx.textAlign = 'left'
+    ctx.fillText(keys, x + 22, ry)
+    ctx.font = font(13)
+    ctx.fillStyle = '#c9c9d2'
+    ctx.fillText(desc, x + 168, ry, Math.max(100, w - 188))
+    ry += 26
+  }
+  const close = 'H / Esc — resume expedition'
+  center(ctx, close, cx, y + H - 20, font(14), hovered('help-close') ? '#a8f0a8' : '#7fd17f')
+  centerHit(ctx, 'help-close', close, cx, y + H - 20, font(14))
 }
 
 /**

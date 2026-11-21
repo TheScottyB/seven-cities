@@ -13,6 +13,7 @@ import { tileHash } from '../world/rng'
 import { PHASES, SHADES, type Relief } from '../art/relief'
 import type { EdgeSet } from '../art/edges'
 import { paperPattern, type DeckleSet } from '../art/paper'
+import { addHit } from '../ui/hit'
 
 export interface RenderCtx {
   ctx: CanvasRenderingContext2D
@@ -342,7 +343,7 @@ let miniCache: { canvas: HTMLCanvasElement; revealed: number; seed: number } | n
 
 const MINI_SIZE = 120
 
-function miniColor(t: number, band: number, hill: number): string {
+export function miniColor(t: number, band: number, hill: number): string {
   if (t === TILE.OCEAN) return DEPTH_RAMP[band]
   if (t === TILE.RIVER) return '#3a7ac0'
   if (t === TILE.BEACH) return '#d8c88a'
@@ -427,6 +428,8 @@ export function renderMinimap(
     vwTiles * scale,
     vhTiles * scale,
   )
+  // clicking the minimap opens the full Cartographer's World Chart
+  addHit('open-chart', px - 2, py - 2, size + 4, size + 4)
 }
 
 /** Drop the cached chart when a new world is generated. */
