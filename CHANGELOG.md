@@ -25,6 +25,8 @@ The first public release.
   come from one shared definition. A village is hostile below an effective temperament of
   0.3 in the parley panel and the soundscape alike, and the score shown at game over
   matches the one recorded in the Chronicle.
-- **Tooling.** Strict TypeScript settings, a relative build base for hosting in any
-  subfolder, an `npm run check` gate (typecheck, tests, build, and a check that the dev-only
-  `window.__dbg` hook is stripped from production), and CI that runs it.
+- **Tooling.** Strict TypeScript 7 settings, Node 26 LTS, Vite 8, Vitest 5, and supply-chain-hardened
+  pnpm 12 (zero dependency build scripts, `blockExoticSubdeps`, `trustPolicy: no-downgrade`),
+  a relative build base for hosting in any subfolder, a `pnpm check` gate (typecheck, tests,
+  build, and a check that the dev-only `window.__dbg` hook is stripped from production), and CI
+  that runs it.

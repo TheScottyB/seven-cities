@@ -10,8 +10,8 @@ home to Spain between voyages to bank your gold and rise at court.
 ## Play
 
 ```bash
-npm install
-npm run dev      # open the printed localhost URL
+pnpm install
+pnpm dev         # open the printed localhost URL
 ```
 
 ## Requirements
@@ -21,8 +21,9 @@ There are no touch controls; on a touch-only device the title screen shows a
 keyboard-required notice. Sound starts after your first key press or click, and that first
 press on the title screen only turns the sound on.
 
-**Building from source:** Node `^20.19.0` or `>=22.12.0` (see `.nvmrc` and `engines` in
-`package.json`).
+**Building from source:** Node `>=26` (Lithium LTS) and `pnpm` `>=12` (see `.nvmrc`, `engines`,
+and `packageManager` in `package.json`). Dependency install scripts are disabled by default
+via `pnpm-workspace.yaml`.
 
 ## Controls
 
@@ -118,9 +119,10 @@ Chronicle, and so can Safari, after seven days of Safari use without a visit to 
 
 ## Tech
 
-Vanilla TypeScript and Vite, drawn to a Canvas with a fixed-timestep loop. All art, sound
-effects, ambience and the title-screen score are generated procedurally with Canvas 2D
-and WebAudio, and the build has zero asset files.
+Vanilla TypeScript 7, Vite 8 (Rolldown), Vitest 5, and pnpm 12 on Node 26 LTS, drawn to a
+Canvas with a fixed-timestep loop. Zero runtime dependencies and zero asset files: all art,
+sound effects, ambience and the title-screen score are generated procedurally with Canvas 2D
+and WebAudio.
 
 ## Project layout
 
@@ -147,10 +149,10 @@ Pure modules never import DOM or canvas code, so they run under Vitest in Node.
 
 ## Deploy
 
-`npm run build` writes `dist/`. The build uses relative paths, so it works from any
+`pnpm build` writes `dist/`. The build uses relative paths, so it works from any
 subfolder on any static host (an itch.io HTML upload, GitHub Pages, Netlify).
 
-It must be served over HTTP: use `npm run preview` locally, or any static server. Opening
+It must be served over HTTP: use `pnpm preview` locally, or any static server. Opening
 `dist/index.html` from disk (`file://`) shows a blank page because browsers block module
 scripts there.
 
@@ -160,12 +162,12 @@ keeps its own saves.
 ## Development
 
 ```bash
-npm run dev         # dev server with hot reload
-npm run typecheck   # tsc
-npm test            # vitest run
-npm run build       # typecheck, then production build to dist/
-npm run preview     # serve dist/ over HTTP
-npm run check       # typecheck + tests + build + dev-hook strip check (what CI runs)
+pnpm dev            # dev server with hot reload
+pnpm typecheck      # tsc (TypeScript 7)
+pnpm test           # vitest run
+pnpm build          # typecheck, then production build to dist/
+pnpm preview        # serve dist/ over HTTP
+pnpm check          # typecheck + tests + build + dev-hook strip check (what CI runs)
 ```
 
 Settled rules:
@@ -175,7 +177,7 @@ Settled rules:
 - Composed music plays on the title screen only; the rest is ambient soundscape.
 - `window.__dbg`, the automated playthrough bot's API, is a stable DEV-only interface:
   entries are added, never renamed or removed, and production builds strip it
-  (`npm run check` verifies this).
+  (`pnpm check` verifies this).
 
 ## Credits and disclaimer
 

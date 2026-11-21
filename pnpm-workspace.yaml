@@ -1,0 +1,8 @@
+# Supply-chain hardening for pnpm:
+# - No dependency lifecycle/postinstall scripts run without explicit approval.
+# - Transitive git/tarball URLs are blocked.
+# - Registry trust/provenance downgrades are rejected.
+onlyBuiltDependencies: []
+strictDepBuilds: true
+blockExoticSubdeps: true
+trustPolicy: no-downgrade

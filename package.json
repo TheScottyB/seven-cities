@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc",
-    "check": "npm run typecheck && vitest run && vite build && node scripts/check-dist.mjs"
+    "check": "tsc && vitest run && vite build && node scripts/check-dist.mjs"
   },
   "keywords": [
     "game",
@@ -21,12 +21,14 @@
   "license": "MIT",
   "repository": "github:TheScottyB/seven-cities",
   "bugs": "https://github.com/TheScottyB/seven-cities/issues",
+  "packageManager": "pnpm@12.21.0",
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": ">=26.0.0",
+    "pnpm": ">=12.0.0"
   },
   "devDependencies": {
-    "typescript": "^6.0.3",
-    "vite": "^8.3.1",
-    "vitest": "^4.1.11"
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
   }
 }
