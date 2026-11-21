@@ -177,7 +177,7 @@ src/
             and the dev-only __dbg hook
 tests/      Vitest unit tests, run in Node
 scripts/    check-dist.mjs, the production-bundle check
-docs/plans/ historical design notes, superseded by the code
+docs/       ARCHITECTURE.md — technical design and invariants
 ```
 
 Pure modules never import DOM or canvas code, so they run under Vitest in Node.
