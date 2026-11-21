@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.1.0
+
+1984 *Seven Cities of Gold* authenticity, cartography, accessibility, and polish.
+
+- **Landmark discoveries & Royal Fame.** Each generated world now places 5–7 deterministic
+  geographic landmarks (cordillera peaks, river mouths, capes, bays, and offshore islands)
+  with 1984-meets-Pythonesque names. Charting them awards `+50` fame per landmark, rings a
+  procedural `'discover'` bell triad, and tallies on the Spain Court and Game Over screens.
+- **Save format v8 (`v7 → v8` upgrade).** Persists discovered landmark IDs alongside full
+  expedition state while transparently upgrading existing v7 saves on read.
+- **Cartographer's World Chart (`Tab` / minimap click).** Full-screen parchment chart
+  displaying charted terrain, Cities of Gold, villages, labeled landmarks, mission forts,
+  moored caravels, and explorer position.
+- **Shareable seeds & presets.** Boot directly into any world via `?seed=<name>` URL links
+  or cycle curated presets (`1492`, `1519`, `6767`) with `P` on the title screen.
+- **In-game controls card (`H` / `?`).** Quick keyboard and survival reference overlay
+  without leaving your expedition.
+- **Walk-in emotes & bump reaction.** Villagers react with overhead pixel emote pills
+  (`Shiny!`, `6-7!`, `Ni!`, `A shrubbery?`, `Run away!`), and crowding wary villagers spooks
+  them slightly.
+- **Audio & accessibility.** Added `'discover'` and `'camp'` procedural cues, a visually
+  hidden `aria-live="polite"` status region mirroring key canvas notices, and an optional
+  headless Chromium smoke workflow (`.github/workflows/smoke.yml`).
+
 ## 1.0.0
 
 The first public release.

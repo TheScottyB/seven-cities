@@ -1,0 +1,71 @@
+name: Browser Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Install pinned pnpm
+        run: npm install -g "$(node -p 'require("./package.json").packageManager')"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check
+      - name: Install Playwright Chromium (isolated from repo lockfile)
+        run: |
+          mkdir -p /tmp/pw-smoke
+          npm --prefix /tmp/pw-smoke install --no-save playwright-core
+          /tmp/pw-smoke/node_modules/.bin/playwright-core install chromium --with-deps
+      - name: Run headless Chromium smoke check against dist/
+        run: |
+          pnpm preview --port 4173 --strictPort &
+          SERVER_PID=$!
+          trap "kill $SERVER_PID 2>/dev/null || true" EXIT
+          sleep 2
+          NODE_PATH=/tmp/pw-smoke/node_modules node -e '
+            const { chromium } = require("playwright-core");
+            (async () => {
+              const browser = await chromium.launch();
+              const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+              const errors = [];
+              page.on("pageerror", (e) => errors.push(String(e)));
+              page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+              await page.goto("http://127.0.0.1:4173/?seed=6767", { waitUntil: "networkidle" });
+              await page.waitForSelector("canvas#game");
+              const box = await page.locator("canvas#game").boundingBox();
+              if (!box || box.width < 1200 || box.height < 700) throw new Error("Canvas failed to size");
+              // First press unlocks audio, second enters outfit, third sets sail
+              await page.keyboard.press("Enter");
+              await page.waitForTimeout(100);
+              await page.keyboard.press("Enter");
+              await page.waitForTimeout(100);
+              await page.keyboard.press("Enter");
+              await page.waitForTimeout(200);
+              // Toggle World Chart and Help overlays
+              await page.keyboard.press("Tab");
+              await page.waitForTimeout(100);
+              await page.keyboard.press("Tab");
+              await page.keyboard.press("h");
+              await page.waitForTimeout(100);
+              await page.keyboard.press("Escape");
+              // Verify production bundle stripped __dbg
+              const hasDbg = await page.evaluate(() => "__dbg" in window);
+              if (hasDbg) throw new Error("window.__dbg leaked into production build");
+              if (errors.length) throw new Error("Console/page errors: " + errors.join("; "));
+              await browser.close();
+              console.log("Browser smoke OK");
+            })().catch((e) => { console.error(e); process.exit(1); });
+          '
