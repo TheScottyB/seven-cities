@@ -12,13 +12,14 @@ import {
   type Outpost,
 } from '../src/game/outposts'
 
-test('founding costs gold and garrison crew', () => {
-  const s = makeState({ gold: 400, crew: 20 })
+test('founding costs gold and garrison crew and eases local fear', () => {
+  const s = makeState({ gold: 400, crew: 20, fear: 10 })
   const outposts: Outpost[] = []
   const o = foundOutpost(s, outposts, 50, 60)
   expect(o).not.toBeNull()
   expect(s.gold).toBe(400 - OUTPOST_COST)
   expect(s.crew).toBe(20 - OUTPOST_CREW)
+  expect(s.fear).toBe(6)
   expect(outposts.length).toBe(1)
 })
 

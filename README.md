@@ -1,11 +1,41 @@
 # Six Seven Cities of Gold Tone Metal
 
-An unofficial fan tribute to *The Seven Cities of Gold* (1984), playable in the browser.
+[![CI](https://github.com/TheScottyB/seven-cities/actions/workflows/ci.yml/badge.svg)](https://github.com/TheScottyB/seven-cities/actions/workflows/ci.yml)
+[![Deploy Pages](https://github.com/TheScottyB/seven-cities/actions/workflows/pages.yml/badge.svg)](https://thescottyb.github.io/seven-cities/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-f4c430.svg)](LICENSE)
+![Node 26 LTS](https://img.shields.io/badge/Node-26_LTS-339933)
+![TypeScript 7](https://img.shields.io/badge/TypeScript-7-3178c6)
+![Vite 8](https://img.shields.io/badge/Vite-8_Rolldown-646cff)
+![pnpm 12](https://img.shields.io/badge/pnpm-12-f69220)
+![Zero Runtime Deps](https://img.shields.io/badge/runtime_deps-0-7fd17f)
+
+An unofficial, absurdly earnest fan tribute to *The Seven Cities of Gold* (1984), playable in the browser — six or seven fabled metropolises, certified genuine 14k gold-tone alloy.
+
+**[Play Live on GitHub Pages →](https://thescottyb.github.io/seven-cities/)**
 
 You are a conquistador making landfall in a procedurally generated New World. Chart the
-coast and interior, find native villages and gather gold while your food, crew and morale
-run down. Find all seven fabled Cities of Gold before the expedition collapses, and sail
-home to Spain between voyages to bank your gold and rise at court.
+coast and interior, parley with native villages (trade, amaze, offer gifts, or raid) while
+your food, crew and morale run down. Find all seven fabled Cities of Gold-Tone Metal before
+the expedition ceases to be, and sail home to Spain between voyages to bank your shiny alloy
+and rise at court.
+
+## Highlights
+
+- **Zero runtime dependencies & zero asset files:** Every pixel-art sprite, terrain relief tile,
+  deckle parchment edge, sound effect, ambient soundscape, and title-screen theme is synthesized
+  at runtime in Canvas 2D and WebAudio (`~37 kB` gzipped bundle).
+- **1984-faithful mechanics with dry humor:** Seeded continents, cordillera rivers (canoes),
+  wind & roaming storms, village walk-ins, **Trade / Gift / Attack / Amaze** parley, 8-wind
+  compass-bearing rumors, **Mission Forts** (provisions + pacification), **Make Camp** (`B`)
+  morale recovery, and multi-voyage Spanish Court rank progression.
+- **Bleeding-edge TypeScript 7 & supply-chain-hardened pnpm 12:** Strict TS 7 (`strict`,
+  `exactOptionalPropertyTypes`, `verbatimModuleSyntax`, `erasableSyntaxOnly`, `satisfies`,
+  ES Explicit Resource Management via `using` / `Symbol.dispose`), Node 26 LTS, Vite 8
+  (Rolldown), Vitest 5 (320+ unit tests), and `pnpm-workspace.yaml` blocking unapproved build
+  scripts, exotic subdeps, and provenance downgrades.
+- **Strict pure/DOM architecture:** Worldgen, game rules, lore, save validation, audio
+  direction, and lifecycle state machines never import DOM or Canvas APIs and run directly in
+  Node under Vitest.
 
 ## Play
 
@@ -31,8 +61,9 @@ via `pnpm-workspace.yaml`.
 |------|--------|
 | `W A S D` / arrow keys | Move |
 | `E` / `Space` | Interact: enter a village, resupply at a fort, board your ship, make landfall, or sail home to Spain from the western edge |
-| `1` / `2` / `3` | In a parley: trade / gift / attack |
-| `F` | Found a mission fort where you stand (on land only) |
+| `1` / `2` / `3` / `4` | In a parley: trade / gift / attack / amaze |
+| `F` | Found a mission fort where you stand (on land only; gathers food and eases fear) |
+| `B` | Make camp / bivouac (on land only; trades provisions & half a day to restore morale) |
 | `Esc` | Walk away from a parley or leave a village; on the map, save and return to the title |
 | `M` | Sound on / off (remembered between visits) |
 | `Enter` | Outfit a new expedition (title) · set sail (outfitting) · outfit the next voyage (Spain) · start a new expedition (game over) |
@@ -74,11 +105,14 @@ shows how many days your larder will feed the crew you have chosen.
 open the parley.
 - **Trade** spends trade goods for gold and a few provisions; a thin pack earns less, and
   friendlier peoples pay better.
-- **Gift** spends a few goods for goodwill and morale, and the elders share rumors that
-  chart the land around the nearest City of Gold you have not found.
-- **Attack** seizes all their gold at the cost of crew and morale.
+- **Gift** spends a few goods for goodwill and morale, and the elders share compass-bearing
+  rumors (direction, rough leagues, and charted fog) toward the nearest City of Gold you have
+  not found.
+- **Attack** seizes all their gold-tone at the cost of crew and morale.
+- **Amaze** stages a free, gleaming gold-tone spectacle — warms wary villages without spending
+  goods, though trying it on a hostile crowd is a gamble.
 
-A village can be traded with or raided only once; a gift leaves it open for a later trade.
+A village can be traded with or raided only once; gifts and amazement leave it open for a later trade.
 
 **Hostility.** Some peoples want no strangers at all. Your violence turns more villages
 against you: every attack spreads fear across the whole New World and sours every
@@ -86,10 +120,11 @@ village's welcome and trade terms. Gifts soften them, warming that village and s
 easing the fear. In a hostile village the people close in, and if they catch you three
 times they drive you out, costing crew and morale.
 
-**Mission forts.** Press `F` on land to found a fort. It costs 250 gold and needs 5 men,
+**Mission forts & camping.** Press `F` on land to found a fort. It costs 250 gold and needs 5 men,
 of whom 3 stay behind as its garrison. Forts cannot be raised on a village's doorstep or
-close to another fort. Each gathers provisions over time; press `E` beside one to carry off
-its stores. Forts stand for the rest of your career.
+close to another fort. Each eases local fear and gathers provisions over time; press `E`
+beside one to carry off its stores. Forts stand for the rest of your career. Press `B` on
+land to pitch camp, trading 18 provisions and half a day to restore crew morale.
 
 **Returning to Spain.** Sail to the western edge of the map and press `E`. Your gold is
 banked with the Crown, ranks are conferred as your treasury grows, and you outfit the next
@@ -130,7 +165,7 @@ and WebAudio.
 src/
   world/    seeded world generation: rng, noise, terrain, villages, fog, coast   (pure)
   game/     game rules: state, movement, ships, weather, parley, walk-in,
-            outfitting, career, forts, saves, chronicle                         (pure)
+            outfitting, career, forts, lore, saves, chronicle                   (pure)
   audio/    director.ts and scene.ts decide cues and ambience (pure); score.ts is
             the music as data; player.ts, music.ts and texture.ts synthesize with WebAudio
   art/      procedural tileset, terrain relief, sprites and paper, baked at boot

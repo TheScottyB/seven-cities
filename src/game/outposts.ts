@@ -19,6 +19,8 @@ export const OUTPOST_REGEN = 2 // provisions gathered per game-second
 export const OUTPOST_MIN_SPACING = 12
 /** the garrison stays behind, and at least two men must march on */
 export const OUTPOST_MIN_CREW = OUTPOST_CREW + 2
+/** authentic 1984 mission effect: raising a mission fort eases local fear */
+export const OUTPOST_FEAR_RELIEF = 4
 
 export function canFound(state: GameState): boolean {
   return state.gold >= OUTPOST_COST && state.crew >= OUTPOST_MIN_CREW
@@ -45,6 +47,7 @@ export function foundOutpost(
   if (outposts.some((o) => Math.hypot(o.x - x, o.y - y) < OUTPOST_MIN_SPACING)) return null
   state.gold -= OUTPOST_COST
   state.crew -= OUTPOST_CREW
+  state.fear = Math.max(0, state.fear - OUTPOST_FEAR_RELIEF)
   const o: Outpost = { x, y, stock: 60 } // the garrison starts a stores shed
   outposts.push(o)
   return o

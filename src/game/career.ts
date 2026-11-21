@@ -17,7 +17,7 @@ export const RANKS = [
   { title: 'Governor', min: 6000 },
   { title: 'Admiral of the Ocean Sea', min: 9000 },
   { title: 'Viceroy of the Indies', min: 13000 },
-] as const
+] as const satisfies readonly { readonly title: string; readonly min: number }[]
 
 export function makeCareer(): Career {
   return { banked: 0, voyages: 0 }

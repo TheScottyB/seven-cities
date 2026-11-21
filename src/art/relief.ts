@@ -6,7 +6,7 @@
  * The renderer never asks "how deep is this water" or "which way does this
  * slope face" while drawing. It asks once, here, and remembers.
  */
-import { TILE } from '../world/tiles'
+import { TILE, type TileId } from '../world/tiles'
 import { tileHash } from '../world/rng'
 import type { GameMap } from '../world/mapgen'
 
@@ -20,7 +20,7 @@ const MAX_DEPTH = 12
  * grass would make it read as forest, and grass-vs-forest is a walking-speed
  * decision the player makes every step.
  */
-export const SHADES: Record<number, number> = {
+export const SHADES: Readonly<Record<number, number>> = {
   [TILE.OCEAN]: 4,
   [TILE.HIGHLAND]: 3,
   [TILE.MOUNTAIN]: 3,
@@ -30,10 +30,10 @@ export const SHADES: Record<number, number> = {
   [TILE.FOREST]: 1,
   [TILE.JUNGLE]: 1,
   [TILE.DESERT]: 1,
-}
+} as const satisfies Record<TileId, number>
 
 /** Animated frames per terrain: water shimmers, foliage leans in the wind. */
-export const PHASES: Record<number, number> = {
+export const PHASES: Readonly<Record<number, number>> = {
   [TILE.OCEAN]: 4,
   [TILE.RIVER]: 4,
   [TILE.FOREST]: 3,
@@ -43,10 +43,10 @@ export const PHASES: Record<number, number> = {
   [TILE.DESERT]: 1,
   [TILE.HIGHLAND]: 1,
   [TILE.MOUNTAIN]: 1,
-}
+} as const satisfies Record<TileId, number>
 
 /** How many dressings each terrain can wear. Impassable ground stays uniform. */
-export const DECORS: Record<number, number> = {
+export const DECORS: Readonly<Record<number, number>> = {
   [TILE.OCEAN]: 1,
   [TILE.RIVER]: 1,
   [TILE.BEACH]: 4,
@@ -56,7 +56,7 @@ export const DECORS: Record<number, number> = {
   [TILE.DESERT]: 4,
   [TILE.HIGHLAND]: 4,
   [TILE.MOUNTAIN]: 2,
-}
+} as const satisfies Record<TileId, number>
 
 /** Frames in one terrain's slice of the atlas. */
 export function framesFor(t: number): number {

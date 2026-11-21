@@ -86,6 +86,10 @@ export function scheduleNote(ctx: BaseAudioContext, dest: AudioNode, n: ScoreNot
       }
       break
     }
+    default: {
+      const _exhaustive: never = n.voice
+      return _exhaustive
+    }
   }
 }
 

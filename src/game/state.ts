@@ -24,6 +24,25 @@ export const SECONDS_PER_DAY = 20
 /** provisions below this read as running low */
 export const LOW_FOOD = 80
 
+/** Classic 1984 expedition camp: trade provisions & half a day to restore morale. */
+export const CAMP_FOOD = 18
+export const CAMP_MORALE = 15
+export const CAMP_MAX_MORALE = 95
+
+export function canCamp(s: GameState): boolean {
+  return s.status === GameStatus.Playing && s.food >= CAMP_FOOD && s.morale < CAMP_MAX_MORALE
+}
+
+/** Pitch camp on land: spends provisions and half a day to rally the crew. */
+export function makeCamp(s: GameState): boolean {
+  if (!canCamp(s)) return false
+  s.food = Math.max(0, s.food - CAMP_FOOD)
+  s.elapsed += SECONDS_PER_DAY * 0.5
+  s.day = 1 + Math.floor(s.elapsed / SECONDS_PER_DAY)
+  s.morale = Math.min(100, s.morale + CAMP_MORALE)
+  return true
+}
+
 /** provisions a crew of this size eats per game day — the outfitter's arithmetic */
 export function dailyAppetite(crew: number): number {
   return (0.2 + crew * 0.04) * SECONDS_PER_DAY

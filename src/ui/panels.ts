@@ -5,6 +5,7 @@ import { TRADE_GOODS, GIFT_GOODS, effectiveTemperament, moodOf, type Mood } from
 import { bestScore, type ChronicleEntry } from '../game/chronicle'
 import { rankTitle, rankIndex, budgetFor, RANKS, type Career } from '../game/career'
 import { dailyAppetite, type GameState, type ScoreParts } from '../game/state'
+import { courtRemark } from '../game/lore'
 import { addHit, hovered } from './hit'
 import { font, fitFont } from './font'
 import { GAME_TITLE } from './title'
@@ -184,7 +185,7 @@ export function drawOutfitScreen(
   center(ctx, 'OUTFIT YOUR EXPEDITION', cx, midY - 150, fitFont(ctx, 'OUTFIT YOUR EXPEDITION', 32, viewW - 64), '#f4c430')
   center(
     ctx,
-    `The Crown grants you ${budget} gold. Spend it well — what remains sails with you.`,
+    `The Crown grants you ${budget} gold-tone doubloons. Spend wisely — what remains sails with you.`,
     cx,
     midY - 112,
     font(15),
@@ -233,8 +234,13 @@ export function drawOutfitScreen(
   const perDay = dailyAppetite(outfit.crew)
   const days = perDay > 0 ? outfit.food / perDay : 0
   const short = days < 5
+  const sixSeven = days >= 5.8 && days <= 7.4
   // said in words too, not by colour alone; no longer than the normal line
-  const larder = short ? `too little: ~${days.toFixed(1)} days` : `this larder lasts ~${days.toFixed(1)} days`
+  const larder = short
+    ? `barely ~${days.toFixed(1)} days (start eyeing the ship's parrot)`
+    : sixSeven
+      ? `about six-seven (~${days.toFixed(1)}) days of hardtack`
+      : `this larder lasts ~${days.toFixed(1)} days`
   center(
     ctx,
     `${short ? '! ' : ''}A crew of ${outfit.crew} eats ~${Math.round(perDay)} provisions a day — ${larder}`,
@@ -276,12 +282,12 @@ export function drawStartScreen(
   const dim = '#9a9aa6'
   const lines: { text: string; color: string; hit?: string }[] = [
     'Chart the unknown coast and interior. Find native villages —',
-    'trade with them, win them over with gifts, or raid them for gold.',
-    'Manage food, crew, and morale, and find all seven Cities of Gold.',
-    'Sail off the western edge to bank gold in Spain.',
+    'trade, amaze, offer gifts, or raid them for genuine gold-tone.',
+    'Manage food, crew, and morale to find all six-seven Cities of Gold.',
+    'Sail off the western edge to bank your shiny alloy in Spain.',
     '',
-    'MOVE  W A S D / arrows      INTERACT  E / Space      CHOOSE  1 2 3',
-    'FORT  F      SOUND  M      MENU  Esc',
+    'MOVE  W A S D / arrows      INTERACT  E / Space      PARLEY  1 2 3 4',
+    'FORT  F      CAMP  B      SOUND  M      MENU  Esc',
     '',
   ].map((text) => ({ text, color: dim }))
   lines.push({ text: `Seed: ${seed}   (R rolls a new world)`, color: dim, hit: 'start-reroll' })
@@ -307,7 +313,7 @@ export function drawStartScreen(
   const top = Math.max(28, Math.round((viewH - total) / 2))
 
   // narrow windows (a phone showing the keyboard notice) shrink the text, not the layout
-  const subtitle = 'A modern expedition into the New World'
+  const subtitle = 'An absurdly earnest 1984 tribute — six or seven cities, mostly brass-plated'
   const chronRows = chronicle.slice(0, wantRows).map(chronicleLine)
   const avail = viewW - 40
   let k = 1
@@ -407,15 +413,15 @@ export function drawSpainScreen(
   const idx = rankIndex(career.banked)
   const next = idx < RANKS.length - 1 ? RANKS[idx + 1] : null
   const lines = [
-    `Treasury: ${career.banked} gold banked`,
-    `Cities of Gold found: ${state.citiesFound}/${CITIES_OF_GOLD}    Villages contacted: ${state.villagesContacted}`,
+    courtRemark(career, justBanked, promoted),
+    `Treasury: ${career.banked} gold-tone banked · Cities: ${state.citiesFound}/${CITIES_OF_GOLD} · Peoples met: ${state.villagesContacted}`,
     `Word of your deeds — fear among the peoples: ${Math.floor(state.fear)}`,
   ]
   let y = midY - 52
-  for (const l of lines) {
-    center(ctx, l, cx, y, font(15), '#9a9aa6', maxW)
+  lines.forEach((l, i) => {
+    center(ctx, l, cx, y, font(i === 0 ? 14 : 15), i === 0 ? '#c9b88a' : '#9a9aa6', maxW)
     y += 26
-  }
+  })
 
   // the road to the next title, drawn as a bar the eye can measure
   if (next) {
@@ -494,11 +500,15 @@ export function drawSpainScreen(
   ctx.restore()
 }
 
-const MOOD_COLOR: Record<Mood, string> = { friendly: '#7fd17f', wary: '#e0b34f', hostile: '#c0504d' }
+const MOOD_COLOR = { friendly: '#7fd17f', wary: '#e0b34f', hostile: '#c0504d' } as const satisfies Record<Mood, string>
 /** what the mood means for the deal on the table */
-const MOOD_TERMS: Record<Mood, string> = { friendly: 'generous terms', wary: 'they bargain hard', hostile: 'they want you gone' }
+const MOOD_TERMS = {
+  friendly: 'generous gold-tone terms',
+  wary: 'they bargain hard',
+  hostile: 'they fetch the pointy sticks',
+} as const satisfies Record<Mood, string>
 /** the ground the delegation stands on */
-const MOOD_GROUND: Record<Mood, string> = { hostile: '#43302a', wary: '#44523a', friendly: '#3d5f32' }
+const MOOD_GROUND = { hostile: '#43302a', wary: '#44523a', friendly: '#3d5f32' } as const satisfies Record<Mood, string>
 
 export function drawEncounter(
   ctx: CanvasRenderingContext2D,
@@ -508,16 +518,23 @@ export function drawEncounter(
   goods: number,
   fear = 0,
   t = 0,
+  settlementName?: string,
 ): void {
   const eff = effectiveTemperament(v.temperament, fear)
   const mood = moodOf(eff)
   const hostile = mood === 'hostile'
   const w = Math.min(600, viewW - 24)
-  const H = 332
+  const H = 366
   const { x, y } = panel(ctx, viewW, viewH, w, H, hostile ? '#c0504d' : '#f4c430')
   const cx = viewW / 2
-  const title = v.golden ? 'A CITY OF GOLD!' : 'A native village'
-  center(ctx, title, cx, y + 40, font(26, true), v.golden ? '#f4c430' : '#e0d18a')
+  const title = settlementName
+    ? v.golden
+      ? `${settlementName.toUpperCase()}!`
+      : settlementName
+    : v.golden
+      ? 'A CITY OF GOLD-TONE!'
+      : 'A native village'
+  center(ctx, title, cx, y + 40, fitFont(ctx, title, 24, w - 40), v.golden ? '#f4c430' : '#e0d18a')
 
   // the delegation: the chief comes out to meet you, people at his back
   const gy = y + 58
@@ -573,9 +590,10 @@ export function drawEncounter(
   const noGoods = goods <= 0
   // [key, verb, description, disabled, what to say instead when disabled]
   const opts: [string, string, string, boolean, string][] = [
-    ['1', 'Trade', `goods for gold & food (${TRADE_GOODS}) — ${terms}`, noGoods, 'no goods left to trade'],
-    ['2', 'Gift', `earn goodwill & rumors (${GIFT_GOODS} goods)`, noGoods, 'no goods to give'],
-    ['3', 'Attack', `seize their gold (risks crew${v.population > 250 ? ', many defenders' : ''})`, false, ''],
+    ['1', 'Trade', `goods for gold-tone & food (${TRADE_GOODS}) — ${terms}`, noGoods, 'no goods left to trade'],
+    ['2', 'Gift', `earn goodwill & compass rumors (${GIFT_GOODS} goods)`, noGoods, 'no goods to give'],
+    ['3', 'Attack', `seize their alloy (risks crew${v.population > 250 ? ', many defenders' : ''})`, false, ''],
+    ['4', 'Amaze', `stage a shiny spectacle (free${hostile ? ', risky when hostile' : ', warms the crowd'})`, false, ''],
   ]
   let ly = y + 192
   for (const [k, verb, desc, disabled, instead] of opts) {
@@ -699,12 +717,12 @@ export function drawGameOver(
     ctx.save()
     ctx.shadowColor = 'rgba(244,196,48,0.8)'
     ctx.shadowBlur = 12 + 5 * Math.sin(t * 2.6)
-    center(ctx, 'THE SEVEN CITIES ARE YOURS', cx, viewH / 2 - 40, fitFont(ctx, 'THE SEVEN CITIES ARE YOURS', 36, viewW - 64), '#f4c430')
+    center(ctx, 'THE SIX-SEVEN CITIES ARE YOURS', cx, viewH / 2 - 40, fitFont(ctx, 'THE SIX-SEVEN CITIES ARE YOURS', 36, viewW - 64), '#f4c430')
     ctx.restore()
-    center(ctx, 'Glory and gold beyond measure.', cx, viewH / 2 - 6, font(18), '#e0d18a', maxW)
+    center(ctx, 'Glory and genuine 14k gold-tone plating beyond measure.', cx, viewH / 2 - 6, font(18), '#e0d18a', maxW)
   } else {
     center(ctx, 'THE EXPEDITION IS LOST', cx, viewH / 2 - 40, fitFont(ctx, 'THE EXPEDITION IS LOST', 36, viewW - 64), '#c0504d')
-    center(ctx, 'Your crew will chart no more. The sea keeps its secrets.', cx, viewH / 2 - 6, font(18), '#c9c9d2', maxW)
+    center(ctx, 'It has ceased to be. It is an ex-expedition.', cx, viewH / 2 - 6, font(18), '#c9c9d2', maxW)
   }
 
   center(ctx, `Final score: ${score}`, cx, viewH / 2 + 40, font(22), '#ffffff', maxW)

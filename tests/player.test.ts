@@ -231,4 +231,17 @@ describe('the ambience bed', () => {
     expect(c).not.toBe(a)
     expect(Array.from(c.getChannelData(0).slice(0, 64))).toEqual(Array.from(a.getChannelData(0).slice(0, 64)))
   })
+
+  it('explicit resource management (using / Symbol.dispose) clears timers and stops the active bed', () => {
+    vi.useFakeTimers()
+    const fake = installFakeAudio()
+    {
+      using p = new AudioPlayer()
+      p.unlock()
+      p.play([{ id: 'amb-land' }])
+      expect(vi.getTimerCount()).toBe(2)
+    }
+    expect(vi.getTimerCount()).toBe(0)
+    expect(fake.nodes.filter((n) => n.kind === 'src')[0].stoppedAt).not.toBeNull()
+  })
 })

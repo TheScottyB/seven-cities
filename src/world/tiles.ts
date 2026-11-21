@@ -10,14 +10,16 @@ export const TILE = {
   RIVER: 8,
 } as const
 
+export type TileId = (typeof TILE)[keyof typeof TILE]
+
 export interface TileInfo {
-  color: string
+  readonly color: string
   /** movement multiplier; 0 means impassable on foot */
-  speed: number
-  walkable: boolean
+  readonly speed: number
+  readonly walkable: boolean
 }
 
-const INFO: Record<number, TileInfo> = {
+const INFO = {
   [TILE.OCEAN]: { color: '#1b4a8a', speed: 0, walkable: false },
   [TILE.BEACH]: { color: '#e0d18a', speed: 1.0, walkable: true },
   [TILE.GRASS]: { color: '#4c9a3a', speed: 1.0, walkable: true },
@@ -28,12 +30,14 @@ const INFO: Record<number, TileInfo> = {
   [TILE.MOUNTAIN]: { color: '#6d6d6d', speed: 0, walkable: false },
   // stepping onto a river means taking to canoes — rivers are fast inland highways
   [TILE.RIVER]: { color: '#3a7ac0', speed: 1.8, walkable: true },
-}
+} as const satisfies Record<TileId, TileInfo>
+
+const INFO_BY_CODE: Readonly<Record<number, TileInfo>> = INFO
 
 export function tileInfo(t: number): TileInfo {
-  return INFO[t] ?? INFO[TILE.OCEAN]
+  return INFO_BY_CODE[t] ?? INFO[TILE.OCEAN]
 }
 
 export function isWalkable(t: number): boolean {
-  return INFO[t]?.walkable === true
+  return INFO_BY_CODE[t]?.walkable === true
 }

@@ -16,17 +16,17 @@ export interface Outfit {
 export const BUDGET = 500
 
 /** gold per unit */
-export const PRICES: Record<keyof Outfit, number> = { food: 0.5, goods: 2, crew: 5, ships: 100 }
+export const PRICES = { food: 0.5, goods: 2, crew: 5, ships: 100 } as const satisfies Record<keyof Outfit, number>
 
-export const LIMITS: Record<keyof Outfit, [number, number]> = {
+export const LIMITS = {
   food: [0, 800],
   goods: [0, 200],
   crew: [10, 100],
   ships: [1, 4],
-}
+} as const satisfies Record<keyof Outfit, readonly [number, number]>
 
 /** how much one keypress adjusts each line item */
-export const STEPS: Record<keyof Outfit, number> = { food: 20, goods: 10, crew: 5, ships: 1 }
+export const STEPS = { food: 20, goods: 10, crew: 5, ships: 1 } as const satisfies Record<keyof Outfit, number>
 
 export function defaultOutfit(): Outfit {
   return { food: 180, goods: 80, crew: 25, ships: 1 }

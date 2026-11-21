@@ -35,10 +35,10 @@
  * The window.__dbg hook is installed at the bottom, in DEV builds only.
  */
 import { generateMap } from './world/mapgen'
-import { placeVillages, nearestUnvisitedGolden, CITIES_OF_GOLD, type Village } from './world/villages'
+import { placeVillages, nearestUnvisitedGolden, type Village } from './world/villages'
 import { nearestLandDist } from './world/coast'
 import { makeFog, reveal } from './world/fog'
-import { makeState, tick, score, scoreParts, GameStatus, LOW_FOOD } from './game/state'
+import { makeState, tick, score, scoreParts, canCamp, makeCamp, GameStatus, LOW_FOOD, CAMP_FOOD } from './game/state'
 import { makeExplorer, moveExplorer } from './game/explorer'
 import { Facing } from './game/gait'
 import { findMoorings, moveShip, type Ship } from './game/ship'
@@ -60,11 +60,14 @@ import {
   resolveTrade,
   resolveGift,
   resolveAttack,
+  resolveAmaze,
   effectiveTemperament,
   moodOf,
   applyDrivenOff,
   HOSTILE_BELOW,
+  type EncounterAction,
 } from './game/encounter'
+import { villageName, rumorLine, cityFoundToast } from './game/lore'
 import { makeScene, tickScene, type WalkinScene } from './game/walkin'
 import { makeCareer, bankGold, budgetFor, rankIndex, type Career } from './game/career'
 import { direct, ambienceFor, type AudioSnapshot, type GameEvent } from './audio/director'
@@ -627,7 +630,7 @@ function updateWalkin(dt: number, scene: WalkinScene, village: Village) {
     walkin = null
   } else if (status === 'driven-off') {
     applyDrivenOff(world.state)
-    flash = { text: 'The villagers drive you out!', t: 2.5 }
+    flash = { text: 'Run away! The villagers drive you out with pointy sticks!', t: 2.8 }
     audioEvents.push('driven-off')
     screen = 'playing'
     walkin = null
@@ -733,6 +736,7 @@ function updatePlaying(dt: number, click: string | null) {
     if (input.pressed('1') || click === 'enc-1') chooseEncounter('trade')
     else if (input.pressed('2') || click === 'enc-2') chooseEncounter('gift')
     else if (input.pressed('3') || click === 'enc-3') chooseEncounter('attack')
+    else if (input.pressed('4') || click === 'enc-4') chooseEncounter('amaze')
     else if (input.pressed('esc') || click === 'enc-esc') encounter = null
   } else {
     const { dx, dy } = input.axis()
@@ -748,7 +752,7 @@ function updatePlaying(dt: number, click: string | null) {
         drX = Math.sin(state.elapsed * 2.1 + explorer.y) * 3
         drY = Math.cos(state.elapsed * 1.7 + explorer.x) * 3
         applyStorm(state, sdt)
-        if (flash.t <= 0) flash = { text: 'A storm batters the ship — crew overboard!', t: 1.2 }
+        if (flash.t <= 0) flash = { text: 'A squall batters the ship — the helm answers like a wet kipper!', t: 1.5 }
       }
       moveShip(map, explorer, dx, dy, sdt, mul, drX, drY)
       world.ships[world.activeShip].x = explorer.x
@@ -762,7 +766,7 @@ function updatePlaying(dt: number, click: string | null) {
     tick(state, sdt)
     tickOutposts(world.outposts, sdt)
     if (foodBefore >= LOW_FOOD && state.food < LOW_FOOD) {
-      flash = { text: 'Provisions low — find a fort, trade, or sail WEST to Spain!', t: 3.5 }
+      flash = { text: "Provisions low — the crew eyes the ship's parrot. Find a fort, trade, or sail WEST!", t: 3.8 }
     }
     // an expedition that ended this tick takes no further action
     if (state.status !== GameStatus.Playing) {
@@ -778,12 +782,24 @@ function updatePlaying(dt: number, click: string | null) {
       const ty = Math.floor(explorer.y)
       if (tooCloseToVillage(world.villages, tx, ty)) flash = { text: 'The people already dwell here.', t: 2 }
       else if (!canFound(state)) {
-        flash = { text: `A fort needs ${OUTPOST_COST} gold and ${OUTPOST_MIN_CREW} men (${OUTPOST_CREW} stay as garrison).`, t: 2.5 }
+        flash = { text: `A fort needs ${OUTPOST_COST} gold-tone and ${OUTPOST_MIN_CREW} men (${OUTPOST_CREW} stay as garrison).`, t: 2.8 }
       }
       else if (foundOutpost(state, world.outposts, tx, ty)) {
-        flash = { text: 'A mission fort rises. The garrison will gather provisions.', t: 3 }
+        flash = { text: 'A mission fort rises. It is only a model, yet the garrison gathers provisions.', t: 3.2 }
         saveGame()
       } else flash = { text: 'Too close to another outpost.', t: 2 }
+    }
+
+    if (screen === 'playing' && !world.sailing && input.pressed('b')) {
+      // classic 1984 expedition camp: trade provisions & half a day for morale
+      if (makeCamp(state)) {
+        flash = { text: 'Camp pitched. Morale rises over questionable stew and coconut-shell percussion.', t: 3 }
+        saveGame()
+      } else if (state.food < CAMP_FOOD) {
+        flash = { text: `Camping needs ${CAMP_FOOD} provisions — not even enough for gruel.`, t: 2.5 }
+      } else if (!canCamp(state)) {
+        flash = { text: 'Spirits are already high; the crew declines a nap.', t: 2 }
+      }
     }
 
     const target = screen === 'playing' && input.pressed('action') ? currentTarget() : null
@@ -845,7 +861,7 @@ function actOn(target: InteractionTarget) {
       const firstGolden = v.golden && !v.visited
       discoverVillage(state, v)
       if (firstGolden) {
-        flash = { text: `A City of Gold — ${state.citiesFound} of ${CITIES_OF_GOLD} found!`, t: 3 }
+        flash = { text: cityFoundToast(villageName(v, world.villages), state.citiesFound), t: 3.5 }
       }
       walkin = makeScene(v, state.fear)
       walkinVillage = v
@@ -874,15 +890,34 @@ function actOn(target: InteractionTarget) {
       saveGame()
       break
     }
+    default: {
+      const _exhaustive: never = target
+      return _exhaustive
+    }
   }
 }
 
-function chooseEncounter(action: 'trade' | 'gift' | 'attack') {
+function chooseEncounter(action: EncounterAction) {
   const v = encounter!
   const { state, villages, fog } = world
   const goldBefore = state.gold
   const crewBefore = state.crew
   const goodsBefore = state.goods
+
+  if (action === 'amaze') {
+    const outcome = resolveAmaze(state, v)
+    audioEvents.push('amaze')
+    if (outcome === 'amazed') {
+      flash = { text: 'Your shiny gold-tone spectacle amazes the crowd! Goodwill rises.', t: 3 }
+    } else if (outcome === 'mocked') {
+      flash = { text: 'They mock your gleaming helmet! ("Your mother was a hamster!")', t: 3 }
+    } else {
+      flash = { text: 'They applaud politely. "It is only a model," murmurs an elder.', t: 2.8 }
+    }
+    encounter = null
+    if (state.crew > 0 && state.morale > 0) saveGame()
+    return
+  }
 
   if (action === 'trade') resolveTrade(state, v)
   else if (action === 'gift') resolveGift(state, v)
@@ -891,14 +926,14 @@ function chooseEncounter(action: 'trade' | 'gift' | 'attack') {
 
   if (action === 'gift') {
     if (state.goods < goodsBefore) {
-      // natives share rumors: chart the land around the nearest unfound city
+      // natives share rumors: compass bearing + chart the land around the nearest unfound city
       const target = nearestUnvisitedGolden(villages, v.x, v.y)
       if (target) {
         reveal(fog, target.x, target.y, RUMOR_RADIUS)
         invalidateMinimap() // a few dozen tiles would not trip the chart's own refresh
-        flash = { text: 'The elders speak of a golden city... (see your map)', t: 3.5 }
+        flash = { text: rumorLine(v, target), t: 4 }
       } else {
-        flash = { text: 'You offer gifts. Goodwill rises.', t: 2.5 }
+        flash = { text: 'You offer gifts. Goodwill rises (a very nice shrubbery).', t: 2.5 }
       }
     } else {
       flash = { text: 'You have no goods left to give.', t: 2.5 }
@@ -907,11 +942,11 @@ function chooseEncounter(action: 'trade' | 'gift' | 'attack') {
     const gained = state.gold - goldBefore
     flash =
       gained > 0
-        ? { text: `Traded for ${gained} gold.`, t: 2.5 }
+        ? { text: `Traded for ${gained} gold-tone doubloons. (Guaranteed 67% shiny.)`, t: 2.8 }
         : { text: 'No goods to trade with!', t: 2.5 }
   } else {
     const lost = crewBefore - state.crew
-    flash = { text: `Raid! +${state.gold - goldBefore} gold, ${lost} crew lost.`, t: 2.5 }
+    flash = { text: `Raid! +${state.gold - goldBefore} gold-tone, ${lost} crew lost. ('Tis but a scratch!)`, t: 2.8 }
   }
   encounter = null
   if (state.crew > 0 && state.morale > 0) saveGame()
@@ -946,7 +981,7 @@ function renderStart() {
   titleInfo ??= { hasSave: loadSave() !== null, chronicle: loadChronicle() }
   const soundLine = life.touchOnly ? undefined : muted ? 'M to unmute' : life.gestured ? 'M to mute' : 'Press any key for sound'
   drawStartScreen(ctx, view.cssW, view.cssH, world.seedStr, resumable || titleInfo.hasSave, titleInfo.chronicle, {
-    soundLine,
+    ...(soundLine ? { soundLine } : {}),
     needKeyboard: life.touchOnly,
   })
   if (flash.t > 0) drawResult(ctx, view.cssW, flash.text, 28)
@@ -968,13 +1003,13 @@ function renderWalkin(scene: WalkinScene, village: Village) {
     // hostile even with no fear to blame: the village's own nature, not your deeds
     note =
       village.temperament < HOSTILE_BELOW
-        ? 'This people wants no strangers here. They close in...'
-        : 'The people remember what your kind has done. They close in...'
+        ? 'This people wants no strangers. "Run away! Run away!" advise your knees.'
+        : 'Word of your deeds arrived first. They fetch the pointy sticks...'
   } else {
     note =
       moodOf(scene.mood) === 'friendly'
-        ? 'The people watch you with open curiosity.'
-        : 'The people keep their distance, wary of the stranger.'
+        ? 'The people marvel at your shiny gold-tone hat.'
+        : 'The people watch you warily, unconvinced by your silly walk.'
   }
   drawWalkin(ctx, view.cssW, view.cssH, scene, tileset, note, spriteBank, uiClock())
   if (flash.t > 0) drawResult(ctx, view.cssW, flash.text, 8)
@@ -1020,7 +1055,7 @@ function renderPlaying(alpha: number) {
 
   // quiet key reference in the corner
   if (screen === 'playing' && !encounter) {
-    const hint = world.sailing ? 'E interact · M sound · Esc menu' : 'E interact · F fort · M sound · Esc menu'
+    const hint = world.sailing ? 'E interact · M sound · Esc menu' : 'E interact · F fort · B camp · M sound · Esc menu'
     ctx.font = font(12)
     ctx.textAlign = 'left'
     ctx.textBaseline = 'alphabetic'
@@ -1034,7 +1069,7 @@ function renderPlaying(alpha: number) {
   // the banner yields while a decision panel is up — no overlapping chrome
   if (flash.t > 0 && screen === 'playing' && !encounter) drawResult(ctx, cssW, flash.text, hudH + 10)
   if (encounter)
-    drawEncounter(ctx, cssW, cssH, encounter, world.state.goods, world.state.fear, uiClock())
+    drawEncounter(ctx, cssW, cssH, encounter, world.state.goods, world.state.fear, uiClock(), villageName(encounter, world.villages))
 }
 
 /** The plate naming what E would do; actOn() does it. */

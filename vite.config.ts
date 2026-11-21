@@ -7,6 +7,6 @@ const port = Number(env?.PORT) || undefined
 export default defineConfig({
   // relative asset URLs so the build runs from any subpath (Pages project site, itch.io)
   base: './',
-  server: { port },
+  ...(port ? { server: { port } } : {}),
   test: { globals: true },
 })

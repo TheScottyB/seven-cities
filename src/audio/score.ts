@@ -145,5 +145,9 @@ export function buildTheme(id: ThemeId): Theme {
     case 'spain': return buildSpain()
     case 'victory': return buildVictory()
     case 'lament': return buildLament()
+    default: {
+      const _exhaustive: never = id
+      return _exhaustive
+    }
   }
 }

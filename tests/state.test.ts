@@ -1,4 +1,16 @@
-import { makeState, tick, dailyAppetite, score, scoreParts, GameStatus, SECONDS_PER_DAY } from '../src/game/state'
+import {
+  makeState,
+  tick,
+  canCamp,
+  makeCamp,
+  CAMP_FOOD,
+  CAMP_MORALE,
+  dailyAppetite,
+  score,
+  scoreParts,
+  GameStatus,
+  SECONDS_PER_DAY,
+} from '../src/game/state'
 
 function base() {
   return makeState({ food: 100, crew: 100, morale: 100 })
@@ -84,4 +96,21 @@ test('score is the sum of its whole-number parts', () => {
   for (const v of Object.values(p)) expect(Number.isInteger(v)).toBe(true)
   expect(p.gold + p.charted + p.villages + p.days).toBe(score(s, 57))
   expect(p.days).toBeLessThan(0)
+})
+
+test('makeCamp trades provisions and half a day to restore morale, refused when full or starving', () => {
+  const s = makeState({ food: 100, morale: 60, elapsed: 0, day: 1 })
+  expect(canCamp(s)).toBe(true)
+  expect(makeCamp(s)).toBe(true)
+  expect(s.food).toBe(100 - CAMP_FOOD)
+  expect(s.morale).toBe(60 + CAMP_MORALE)
+  expect(s.elapsed).toBe(SECONDS_PER_DAY * 0.5)
+
+  const cheerful = makeState({ food: 100, morale: 98 })
+  expect(canCamp(cheerful)).toBe(false)
+  expect(makeCamp(cheerful)).toBe(false)
+
+  const hungry = makeState({ food: CAMP_FOOD - 1, morale: 40 })
+  expect(canCamp(hungry)).toBe(false)
+  expect(makeCamp(hungry)).toBe(false)
 })

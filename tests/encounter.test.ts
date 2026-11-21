@@ -4,6 +4,7 @@ import {
   resolveTrade,
   resolveGift,
   resolveAttack,
+  resolveAmaze,
   effectiveTemperament,
   moodOf,
   applyDrivenOff,
@@ -161,4 +162,27 @@ test('being driven off costs men and heart, floored at zero', () => {
   applyDrivenOff(low)
   expect(low.crew).toBe(0)
   expect(low.morale).toBe(0)
+})
+
+test('resolveAmaze warms wary villages, applauds friendly ones, and gambles with hostile crowds', () => {
+  const waryV = village({ temperament: 0.45 })
+  const s = makeState({ morale: 60, goods: 0 })
+  expect(resolveAmaze(s, waryV)).toBe('amazed')
+  expect(waryV.temperament).toBeGreaterThan(0.45)
+  expect(s.morale).toBe(64)
+  expect(s.goods).toBe(0) // costs no goods
+
+  const friendlyV = village({ temperament: 0.85 })
+  expect(resolveAmaze(s, friendlyV)).toBe('already-impressed')
+
+  const hostileWin = village({ temperament: 0.1 })
+  expect(resolveAmaze(s, hostileWin, () => 0.2)).toBe('amazed')
+  expect(hostileWin.temperament).toBeGreaterThan(0.1)
+
+  const hostileLose = village({ temperament: 0.1 })
+  const m0 = s.morale
+  const f0 = s.fear
+  expect(resolveAmaze(s, hostileLose, () => 0.9)).toBe('mocked')
+  expect(s.morale).toBeLessThan(m0)
+  expect(s.fear).toBeGreaterThan(f0)
 })

@@ -12,6 +12,8 @@ export const HOSTILE_BELOW = 0.3
 export const FRIENDLY_ABOVE = 0.66
 
 export type Mood = 'friendly' | 'wary' | 'hostile'
+export type EncounterAction = 'trade' | 'gift' | 'attack' | 'amaze'
+export type AmazeOutcome = 'amazed' | 'already-impressed' | 'mocked'
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
@@ -77,6 +79,30 @@ export function resolveAttack(s: GameState, v: Village, roll: Roll = Math.random
   // massacres echo across the whole New World
   s.fear = clamp(s.fear + 10 + Math.floor(v.population / 40), 0, 100)
   v.depleted = true
+}
+
+/**
+ * Classic 1984 "Amaze" parley: stage a shiny gold-tone spectacle without
+ * spending trade goods. Warms wary peoples; risky before a hostile crowd;
+ * friendly villages merely applaud politely.
+ */
+export function resolveAmaze(s: GameState, v: Village, roll: Roll = Math.random): AmazeOutcome {
+  if (v.depleted) return 'already-impressed'
+  const mood = moodOf(effectiveTemperament(v.temperament, s.fear))
+  if (mood === 'friendly') return 'already-impressed'
+  if (mood === 'hostile') {
+    if (roll() < 0.5) {
+      v.temperament = clamp(v.temperament + 0.22, 0, 1)
+      s.morale = clamp(s.morale + 5, 0, 100)
+      return 'amazed'
+    }
+    s.morale = clamp(s.morale - 5, 0, 100)
+    s.fear = clamp(s.fear + 3, 0, 100)
+    return 'mocked'
+  }
+  v.temperament = clamp(v.temperament + 0.16, 0, 1)
+  s.morale = clamp(s.morale + 4, 0, 100)
+  return 'amazed'
 }
 
 /** Warriors chase the party out of the village before it reaches the chief. */

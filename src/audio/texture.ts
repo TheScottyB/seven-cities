@@ -165,5 +165,9 @@ export function synthTexture(
       osc(ctx, dest, 'sine', 50, at + 0.22, 0.012, 0.02, 0.12, 0.21 * g)
       break
     }
+    default: {
+      const _exhaustive: never = kind
+      return _exhaustive
+    }
   }
 }

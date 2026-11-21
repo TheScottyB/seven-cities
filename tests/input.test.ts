@@ -218,3 +218,17 @@ test('auto-repeat feeds pressedOrRepeat but not pressed', () => {
   input.endFrame()
   expect(input.pressedOrRepeat('down')).toBe(false)
 })
+
+test('explicit resource management (using / Symbol.dispose) detaches listeners', () => {
+  const target = new EventTarget()
+  let leaked: Input
+  {
+    using input = new Input(target)
+    leaked = input
+    target.dispatchEvent(Object.assign(new Event('keydown'), { key: 'ArrowRight' }))
+    expect(input.axis()).toEqual({ dx: 1, dy: 0 })
+  }
+  expect(leaked.axis()).toEqual({ dx: 0, dy: 0 })
+  target.dispatchEvent(Object.assign(new Event('keydown'), { key: 'ArrowLeft' }))
+  expect(leaked.axis()).toEqual({ dx: 0, dy: 0 })
+})

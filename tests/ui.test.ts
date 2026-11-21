@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { beginHits, hitAt } from '../src/ui/hit'
 import { drawHud } from '../src/ui/hud'
-import { drawStartScreen, drawOutfitScreen, drawSpainScreen, drawGameOver } from '../src/ui/panels'
+import { drawStartScreen, drawOutfitScreen, drawSpainScreen, drawEncounter, drawGameOver } from '../src/ui/panels'
 import { makeState, scoreParts } from '../src/game/state'
 import { defaultOutfit } from '../src/game/outfit'
 import { makeCareer } from '../src/game/career'
@@ -141,12 +141,30 @@ describe('panels layout & hit regions', () => {
     expect(hitAt(food.x + 10, food.y - 6)).toBe('outfit-row-0')
   })
 
+  test('drawEncounter registers all four parley actions including Amaze', () => {
+    const { ctx, texts } = fakeCtx()
+    beginHits()
+    drawEncounter(
+      ctx,
+      800,
+      600,
+      { x: 10, y: 12, wealth: 300, temperament: 0.5, population: 120, golden: true, visited: true, depleted: false },
+      50,
+      0,
+      0,
+      'Cibola (14k Gold-Tone)',
+    )
+    expect(texts.some((t) => t.text === 'CIBOLA (14K GOLD-TONE)!')).toBe(true)
+    const amaze = texts.find((t) => t.text === '[4] Amaze')!
+    expect(hitAt(amaze.x + 10, amaze.y - 6)).toBe('enc-4')
+  })
+
   test('drawGameOver registers restart hit and fits title on narrow windows', () => {
     const { ctx, texts } = fakeCtx()
     beginHits()
     const st = makeState({ gold: 200, citiesFound: 7, day: 10 })
     drawGameOver(ctx, 480, 640, true, 1000, makeCareer(), { cities: 7, day: 10, parts: scoreParts(st, 400) }, 0)
-    const title = texts.find((t) => t.text === 'THE SEVEN CITIES ARE YOURS')!
+    const title = texts.find((t) => t.text === 'THE SIX-SEVEN CITIES ARE YOURS')!
     const px = Number(/(\d+)px/.exec(title.font)![1])
     expect(px).toBeLessThan(36) // fitFont stepped down for 480px width
     const go = texts.find((t) => t.text.includes('Press ENTER'))!

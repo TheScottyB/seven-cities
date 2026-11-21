@@ -1,13 +1,15 @@
-export class Input {
+export class Input implements Disposable {
   private held = new Set<string>()
   private edge = new Set<string>()
   private repeat = new Set<string>()
   /** keys still physically down after swallowHeld(); ignored until released */
   private swallowed = new Set<string>()
+  private ac = new AbortController()
   /** A driver that sends its own keydown/keyup pairs keeps them across blur and hide. */
   keepOnBlur = false
 
   constructor(target: EventTarget = window) {
+    const { signal } = this.ac
     target.addEventListener('keydown', (e) => {
       const ke = e as KeyboardEvent
       // Leave browser/OS shortcuts (Ctrl+R, Cmd+W, Alt+Tab) to the browser.
@@ -21,7 +23,7 @@ export class Input {
       else this.edge.add(k)
       this.held.add(k)
       if (HANDLED.has(k)) ke.preventDefault()
-    })
+    }, { signal })
     target.addEventListener('keyup', (e) => {
       const ke = e as KeyboardEvent
       const k = key(ke)
@@ -29,16 +31,22 @@ export class Input {
       this.swallowed.delete(k)
       // macOS swallows keyups for keys released while Cmd was down.
       if (ke.key === 'Meta') this.reset()
-    })
+    }, { signal })
     // Keyups that land in another window never arrive; drop everything held.
     target.addEventListener('blur', () => {
       if (!this.keepOnBlur) this.reset()
-    })
+    }, { signal })
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', () => {
         if (document.hidden && !this.keepOnBlur) this.reset()
-      })
+      }, { signal })
     }
+  }
+
+  /** Detach every listener and clear state (ES Explicit Resource Management). */
+  [Symbol.dispose](): void {
+    this.ac.abort()
+    this.reset()
   }
 
   /** Forget all held and pending keys. */
@@ -92,7 +100,7 @@ export class Input {
   }
 }
 
-const HANDLED = new Set(['left', 'right', 'up', 'down', 'action', '1', '2', '3', 'esc'])
+const HANDLED = new Set(['left', 'right', 'up', 'down', 'action', '1', '2', '3', '4', 'esc'])
 
 const PHYSICAL_MOVE: Record<string, string> = {
   KeyW: 'up',
@@ -102,7 +110,7 @@ const PHYSICAL_MOVE: Record<string, string> = {
 }
 
 // Letters whose on-screen labels name the character, not the key position.
-const MNEMONIC = new Set(['f', 'm', 'c', 'r', 'e'])
+const MNEMONIC = new Set(['f', 'b', 'm', 'c', 'r', 'e'])
 
 /**
  * Map a key event to a logical key. Keydown and keyup must go through here

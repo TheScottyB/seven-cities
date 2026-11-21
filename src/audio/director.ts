@@ -9,6 +9,7 @@ export type CueId =
   | 'trade'
   | 'gift'
   | 'attack'
+  | 'amaze'
   | 'city-found'
   | 'victory'
   | 'defeat'
@@ -40,7 +41,7 @@ export interface AudioSnapshot {
   lost: boolean
 }
 
-export type GameEvent = 'trade' | 'gift' | 'attack' | 'driven-off'
+export type GameEvent = 'trade' | 'gift' | 'attack' | 'amaze' | 'driven-off'
 
 export function ambienceFor(s: AudioSnapshot): CueId {
   if (s.screen !== 'playing' && s.screen !== 'walkin') return 'amb-none'

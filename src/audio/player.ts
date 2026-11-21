@@ -91,6 +91,11 @@ export function synthesize(ctx: BaseAudioContext, dest: AudioNode, id: CueId, at
       tone(ctx, dest, 'sine', 65, at + 0.22, 0.2, 0.9)
       noiseBurst(ctx, dest, at + 0.1, 0.12, 0.5, 2500, 0.8)
       break
+    case 'amaze': // brassy gold-tone trumpet flourish
+      tone(ctx, dest, 'sawtooth', 440, at, 0.12, 0.22)
+      tone(ctx, dest, 'sawtooth', 554, at + 0.1, 0.12, 0.24)
+      tone(ctx, dest, 'sawtooth', 659, at + 0.2, 0.28, 0.28)
+      break
     case 'city-found': // rising fanfare
       tone(ctx, dest, 'square', 392, at, 0.15, 0.25)
       tone(ctx, dest, 'square', 523, at + 0.14, 0.15, 0.25)
@@ -140,13 +145,20 @@ export function synthesize(ctx: BaseAudioContext, dest: AudioNode, id: CueId, at
 }
 
 /** Looping ambience beds: filtered noise shaped per environment. */
-const AMBIENTS: Record<string, { hz: number; q: number; gain: number; lfoHz: number } | null> = {
+interface AmbientSpec {
+  readonly hz: number
+  readonly q: number
+  readonly gain: number
+  readonly lfoHz: number
+}
+
+const AMBIENTS: Readonly<Record<string, AmbientSpec | null>> = {
   'amb-sea': { hz: 400, q: 0.4, gain: 0.16, lfoHz: 0.14 },
   'amb-storm': { hz: 700, q: 0.7, gain: 0.34, lfoHz: 0.6 },
   'amb-river': { hz: 2400, q: 0.5, gain: 0.1, lfoHz: 0.9 },
   'amb-land': { hz: 5000, q: 0.3, gain: 0.02, lfoHz: 0.25 },
   'amb-none': null,
-}
+} as const satisfies Record<`amb-${string}`, AmbientSpec | null>
 
 /** The live ambience bed: every node it started, so a change can stop them all. */
 interface Bed {
@@ -167,7 +179,7 @@ export interface CueLogEntry {
   at: number
 }
 
-export class AudioPlayer {
+export class AudioPlayer implements Disposable {
   private ctx: AudioContext | null = null
   private master: GainNode | null = null
   private bed: Bed | null = null
@@ -176,6 +188,7 @@ export class AudioPlayer {
   private muted = false
   private log: CueLogEntry[] = []
   private chirpTimer: ReturnType<typeof setInterval> | null = null
+  private textureTimer: ReturnType<typeof setInterval> | null = null
   private theme: Theme | null = null
   private themeId: ThemeId | null = null
   private themeGain: GainNode | null = null
@@ -184,6 +197,46 @@ export class AudioPlayer {
   private themeTimer: ReturnType<typeof setInterval> | null = null
   private controls: SceneControls | null = null
   private texStats: Record<TextureKind, number> = { creak: 0, clang: 0, gull: 0, swell: 0, pad: 0, pulse: 0 }
+
+  /** Stop all timers and release audio nodes (ES Explicit Resource Management). */
+  ;[Symbol.dispose](): void {
+    if (this.textureTimer) {
+      clearInterval(this.textureTimer)
+      this.textureTimer = null
+    }
+    if (this.chirpTimer) {
+      clearInterval(this.chirpTimer)
+      this.chirpTimer = null
+    }
+    if (this.themeTimer) {
+      clearInterval(this.themeTimer)
+      this.themeTimer = null
+    }
+    if (this.themeGain) {
+      this.themeGain.disconnect()
+      this.themeGain = null
+    }
+    if (this.bed) {
+      const old = this.bed
+      this.bed = null
+      try {
+        old.src.stop()
+        old.lfo.stop()
+        old.drift?.stop()
+      } catch {
+        /* already stopped */
+      }
+      old.g.disconnect()
+      old.f.disconnect()
+      old.lfoGain.disconnect()
+      old.driftGain?.disconnect()
+    }
+    if (this.ctx && typeof this.ctx.close === 'function') {
+      void this.ctx.close().catch(() => {})
+    }
+    this.ctx = null
+    this.master = null
+  }
 
   /**
    * Call from a user-gesture handler; browsers gate audio until then.
@@ -213,8 +266,7 @@ export class AudioPlayer {
       const pendingAmb = this.pendingAmbient
       this.pendingAmbient = null
       if (pendingAmb) this.setAmbient(pendingAmb)
-      // runs for the page's lifetime; nothing ever tears the player down
-      setInterval(() => this.textureTick(), 250)
+      this.textureTimer = setInterval(() => this.textureTick(), 250)
       return true
     } catch {
       this.ctx = null // no audio — the game plays silent
